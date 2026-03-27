@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
+import { Pagination } from '../components/Pagination';
+import { useConfirm } from '../components/ConfirmDialog';
 
 interface Asset {
   id: string;
@@ -32,6 +34,8 @@ export function AssetsPage() {
   const debouncedSearch = useDebounce(search, 300);
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Asset | null>(null);
 
@@ -40,13 +44,16 @@ export function AssetsPage() {
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterType) params.type = filterType;
     if (filterStatus) params.status = filterStatus;
+    params.page = String(page);
+    params.limit = '20';
     api.get('/assets', { params })
-      .then(({ data }) => setAssets(data.data))
+      .then(({ data }) => { setAssets(data.data); setTotalPages(data.pagination?.totalPages || 1); })
       .catch(() => { setAssets([]); toast('error', 'Failed to load assets'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterType, filterStatus]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterType, filterStatus, page]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterType, filterStatus]);
 
   return (
     <div>
@@ -107,6 +114,7 @@ export function AssetsPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>
@@ -220,7 +228,12 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset?: Asset; onClose: (
 
 function AssetDetailModal({ asset, onClose, onRefresh }: { asset: Asset; onClose: () => void; onRefresh: () => void }) {
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   async function updateStatus(status: string) {
+    if (status === 'RETIRED') {
+      const ok = await confirm({ title: 'Retire Asset', message: `Are you sure you want to retire ${asset.assetTag}? This action cannot be easily undone.`, confirmText: 'Retire', variant: 'danger' });
+      if (!ok) return;
+    }
     try {
       await api.patch(`/assets/${asset.id}`, { status });
       toast('success', `Asset ${status.toLowerCase()}`);

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
+import { Pagination } from '../components/Pagination';
 
 interface Article {
   id: string;
@@ -25,6 +26,8 @@ export function KnowledgePage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Article | null>(null);
   const [showEdit, setShowEdit] = useState<Article | null>(null);
@@ -33,13 +36,16 @@ export function KnowledgePage() {
     const params: Record<string, string> = {};
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
+    params.page = String(page);
+    params.limit = '20';
     api.get('/knowledge', { params })
-      .then(({ data }) => setArticles(data.data))
+      .then(({ data }) => { setArticles(data.data); setTotalPages(data.pagination?.totalPages || 1); })
       .catch(() => { setArticles([]); toast('error', 'Failed to load articles'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, page]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
   return (
     <div>
@@ -91,6 +97,10 @@ export function KnowledgePage() {
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && articles.length > 0 && (
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       )}
 
       {showCreate && <ArticleFormModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchData(); }} />}

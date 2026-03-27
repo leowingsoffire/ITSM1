@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
+import { ConfirmProvider } from './components/ConfirmDialog';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -14,6 +15,12 @@ import { AdminTeamsPage } from './pages/AdminTeamsPage';
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  return isAdmin ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 function NotFoundPage() {
@@ -45,8 +52,8 @@ function AppRoutes() {
         <Route path="service-requests" element={<ServiceRequestsPage />} />
         <Route path="assets" element={<AssetsPage />} />
         <Route path="knowledge" element={<KnowledgePage />} />
-        <Route path="admin/users" element={<AdminUsersPage />} />
-        <Route path="admin/teams" element={<AdminTeamsPage />} />
+        <Route path="admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
+        <Route path="admin/teams" element={<AdminRoute><AdminTeamsPage /></AdminRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
@@ -58,7 +65,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
+          <ConfirmProvider>
+            <AppRoutes />
+          </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

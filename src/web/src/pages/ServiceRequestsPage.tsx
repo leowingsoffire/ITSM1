@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
+import { Pagination } from '../components/Pagination';
+import { useConfirm } from '../components/ConfirmDialog';
 
 interface ServiceRequest {
   id: string;
@@ -27,6 +29,8 @@ export function ServiceRequestsPage() {
   const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<ServiceRequest | null>(null);
 
@@ -35,13 +39,16 @@ export function ServiceRequestsPage() {
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
+    params.page = String(page);
+    params.limit = '20';
     api.get('/service-requests', { params })
-      .then(({ data }) => setItems(data.data))
+      .then(({ data }) => { setItems(data.data); setTotalPages(data.pagination?.totalPages || 1); })
       .catch(() => { setItems([]); toast('error', 'Failed to load service requests'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, filterPriority]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, filterPriority, page]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterPriority]);
 
   return (
     <div>
@@ -102,6 +109,7 @@ export function ServiceRequestsPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>
@@ -184,7 +192,12 @@ function SRFormModal({ sr, onClose, onSaved }: { sr?: ServiceRequest; onClose: (
 
 function SRDetailModal({ sr, onClose, onRefresh }: { sr: ServiceRequest; onClose: () => void; onRefresh: () => void }) {
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   async function updateStatus(status: string) {
+    if (status === 'REJECTED') {
+      const ok = await confirm({ title: 'Reject Request', message: `Are you sure you want to reject ${sr.number}? The requester will be notified.`, confirmText: 'Reject', variant: 'danger' });
+      if (!ok) return;
+    }
     try {
       await api.patch(`/service-requests/${sr.id}`, { status });
       toast('success', `Request ${status.toLowerCase().replace('_', ' ')}`);

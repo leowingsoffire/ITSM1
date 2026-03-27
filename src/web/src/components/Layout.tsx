@@ -1,7 +1,9 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const NAV_ITEMS = [
+type NavItem = { section: string } | { to: string; icon: string; label: string; adminOnly?: boolean };
+
+const NAV_ITEMS: NavItem[] = [
   { section: 'Main' },
   { to: '/', icon: '⌘', label: 'Dashboard' },
   { section: 'Service Management' },
@@ -11,13 +13,35 @@ const NAV_ITEMS = [
   { to: '/assets', icon: '◎', label: 'Assets / CMDB' },
   { to: '/knowledge', icon: '◈', label: 'Knowledge Base' },
   { section: 'Administration' },
-  { to: '/admin/users', icon: '◉', label: 'Users' },
-  { to: '/admin/teams', icon: '⬡', label: 'Teams' },
+  { to: '/admin/users', icon: '◉', label: 'Users', adminOnly: true },
+  { to: '/admin/teams', icon: '⬡', label: 'Teams', adminOnly: true },
 ];
 
 export function Layout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+  function handleLogout() {
+    logout();
+    navigate('/login');
+  }
+
+  const initials = user
+    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || user.email[0].toUpperCase()
+    : '?';
+
+  // Filter out admin-only items + their orphaned section headers
+  const visibleItems = NAV_ITEMS.filter((item, i, arr) => {
+    if ('adminOnly' in item && item.adminOnly && !isAdmin) return false;
+    if ('section' in item && !('to' in item)) {
+      const nextItems = arr.slice(i + 1);
+      const nextSection = nextItems.findIndex(n => 'section' in n && !('to' in n));
+      const children = nextItems.slice(0, nextSection === -1 ? undefined : nextSection);
+      return children.some(c => !('adminOnly' in c && c.adminOnly) || isAdmin);
+    }
+    return true;
+  });
 
   function handleLogout() {
     logout();
@@ -40,7 +64,7 @@ export function Layout() {
         </div>
 
         <div className="sidebar-nav">
-          {NAV_ITEMS.map((item, i) =>
+          {visibleItems.map((item, i) =>
             'section' in item && !('to' in item) ? (
               <div key={i} className="sidebar-section">{item.section}</div>
             ) : 'to' in item ? (

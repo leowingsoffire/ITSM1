@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
+import { Pagination } from '../components/Pagination';
+import { useConfirm } from '../components/ConfirmDialog';
 
 interface User {
   id: string;
@@ -18,26 +20,41 @@ const ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'END_USER'];
 
 export function AdminUsersPage() {
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
   const [filterRole, setFilterRole] = useState('');
   const [editUser, setEditUser] = useState<User | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   function fetchData() {
     const params: Record<string, string> = {};
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterRole) params.role = filterRole;
+    params.page = String(page);
+    params.limit = '20';
     api.get('/admin/users', { params })
-      .then(({ data }) => setUsers(data.data))
+      .then(({ data }) => { setUsers(data.data); setTotalPages(data.pagination?.totalPages || 1); })
       .catch(() => { setUsers([]); toast('error', 'Failed to load users'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterRole]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterRole, page]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterRole]);
 
   async function toggleActive(user: User) {
+    if (user.isActive) {
+      const ok = await confirm({
+        title: 'Deactivate User',
+        message: `Are you sure you want to deactivate ${user.firstName} ${user.lastName}? They will lose access to the system.`,
+        confirmText: 'Deactivate',
+        variant: 'danger',
+      });
+      if (!ok) return;
+    }
     try {
       await api.patch(`/admin/users/${user.id}`, { isActive: !user.isActive });
       toast('success', `User ${!user.isActive ? 'activated' : 'deactivated'}`);
@@ -122,9 +139,11 @@ export function AdminUsersPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>
     </div>
   );
 }
+

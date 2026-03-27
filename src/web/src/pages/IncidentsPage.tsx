@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
+import { Pagination } from '../components/Pagination';
 
 interface Incident {
   id: string;
@@ -35,6 +36,8 @@ export function IncidentsPage() {
   const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Incident | null>(null);
   const [showEdit, setShowEdit] = useState<Incident | null>(null);
@@ -44,13 +47,16 @@ export function IncidentsPage() {
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
+    params.page = String(page);
+    params.limit = '20';
     api.get('/incidents', { params })
-      .then(({ data }) => setIncidents(data.data))
+      .then(({ data }) => { setIncidents(data.data); setTotalPages(data.pagination?.totalPages || 1); })
       .catch(() => { setIncidents([]); toast('error', 'Failed to load incidents'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchIncidents(); }, [debouncedSearch, filterStatus, filterPriority]);
+  useEffect(() => { fetchIncidents(); }, [debouncedSearch, filterStatus, filterPriority, page]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterPriority]);
 
   return (
     <div>
@@ -111,6 +117,7 @@ export function IncidentsPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>
