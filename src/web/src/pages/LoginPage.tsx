@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,10 +14,8 @@ export function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
-      const { data } = await api.post('/auth/login', { email, password });
-      localStorage.setItem('itsm_token', data.data.token);
+      await login(email, password);
       navigate('/');
     } catch {
       setError('Invalid email or password');
@@ -26,35 +25,45 @@ export function LoginPage() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#1a1a2e' }}>
-      <form onSubmit={handleSubmit} style={{ background: '#fff', padding: 32, borderRadius: 8, width: 360 }}>
-        <h1 style={{ marginBottom: 24 }}>ITSM1 Login</h1>
-        {error && <p style={{ color: 'red', marginBottom: 12 }}>{error}</p>}
-        <div style={{ marginBottom: 16 }}>
-          <label>Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }}
-          />
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-brand">
+          <h1>ITSM1</h1>
+          <p>IT Service Management Platform</p>
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <label>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }}
-          />
-        </div>
-        <button type="submit" disabled={loading} style={{ width: '100%', padding: 10, background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+        {error && <div className="login-error">{error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Email Address</label>
+            <input
+              type="email"
+              className="form-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@itsm1.local"
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input
+              type="password"
+              className="form-input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              required
+              minLength={6}
+            />
+          </div>
+          <button type="submit" disabled={loading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+        <p className="text-xs text-muted" style={{ textAlign: 'center', marginTop: 16 }}>
+          Demo: admin@itsm1.local / admin123
+        </p>
+      </div>
     </div>
   );
 }
