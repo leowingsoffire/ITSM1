@@ -1,0 +1,24 @@
+name: CD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release artifact
+        run: echo "Add release build steps here"
+
+      - name: Deploy
+        run: echo "Add deployment steps here (e.g., Azure, AWS, K8s)"

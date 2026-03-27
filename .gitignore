@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+vendor/
+packages/
+.venv/
+__pycache__/
+
+# Build output
+bin/
+obj/
+dist/
+build/
+out/
+target/
+
+# IDE
+.idea/
+.vs/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Secrets — never commit
+*.pem
+*.key
+*.pfx
+*.p12
