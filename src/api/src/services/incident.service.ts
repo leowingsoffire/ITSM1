@@ -82,9 +82,9 @@ export async function listIncidents(query: ListIncidentsQuery) {
   if (assignedToId) where.assignedToId = assignedToId;
   if (search) {
     where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { number: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
+      { title: { contains: search } },
+      { number: { contains: search } },
+      { description: { contains: search } },
     ];
   }
 

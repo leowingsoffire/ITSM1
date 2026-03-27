@@ -44,7 +44,7 @@ export async function login(input: LoginInput) {
   const token = jwt.sign(
     { userId: user.id, email: user.email, role: user.role },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN },
+    { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions,
   );
 
   logger.info({ userId: user.id }, 'User logged in');

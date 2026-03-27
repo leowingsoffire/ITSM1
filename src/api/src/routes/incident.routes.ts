@@ -23,7 +23,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const incident = await incidentService.getIncidentById(req.params.id);
+    const incident = await incidentService.getIncidentById(req.params.id as string);
     res.json({ data: incident });
   } catch (err) {
     next(err);
@@ -43,7 +43,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const input = updateIncidentSchema.parse(req.body);
-    const incident = await incidentService.updateIncident(req.params.id, input);
+    const incident = await incidentService.updateIncident(req.params.id as string, input);
     res.json({ data: incident });
   } catch (err) {
     next(err);
