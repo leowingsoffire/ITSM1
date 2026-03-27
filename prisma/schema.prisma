@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Teams ───────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  role         UserRole @default(AGENT)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  teamId String? @map("team_id")
+  team   Team?   @relation(fields: [teamId], references: [id])
+
+  assignedIncidents Incident[] @relation("AssignedAgent")
+  createdIncidents  Incident[] @relation("CreatedBy")
+  serviceRequests   ServiceRequest[]
+  comments          Comment[]
+  knowledgeArticles KnowledgeArticle[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+  MANAGER
+  END_USER
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  members   User[]
+  incidents Incident[]
+
+  @@map("teams")
+}
+
+// ─── Incidents ───────────────────────────────────────────────
+
+model Incident {
+  id          String           @id @default(uuid())
+  number      String           @unique
+  title       String
+  description String
+  status      IncidentStatus   @default(NEW)
+  priority    Priority         @default(MEDIUM)
+  impact      Impact           @default(MEDIUM)
+  urgency     Urgency          @default(MEDIUM)
+  category    String?
+  subcategory String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  resolvedAt  DateTime?        @map("resolved_at")
+  closedAt    DateTime?        @map("closed_at")
+  slaBreached Boolean          @default(false) @map("sla_breached")
+
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("AssignedAgent", fields: [assignedToId], references: [id])
+
+  assignedTeamId String? @map("assigned_team_id")
+  assignedTeam   Team?   @relation(fields: [assignedTeamId], references: [id])
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("CreatedBy", fields: [createdById], references: [id])
+
+  relatedAssetId String? @map("related_asset_id")
+  relatedAsset   Asset?  @relation(fields: [relatedAssetId], references: [id])
+
+  comments Comment[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@map("incidents")
+}
+
+enum IncidentStatus {
+  NEW
+  IN_PROGRESS
+  ON_HOLD
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Impact {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Urgency {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ─── Service Requests ────────────────────────────────────────
+
+model ServiceRequest {
+  id          String               @id @default(uuid())
+  number      String               @unique
+  title       String
+  description String
+  status      ServiceRequestStatus @default(SUBMITTED)
+  priority    Priority             @default(MEDIUM)
+  category    String?
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  fulfilledAt DateTime?            @map("fulfilled_at")
+
+  requesterId String @map("requester_id")
+  requester   User   @relation(fields: [requesterId], references: [id])
+
+  comments Comment[]
+
+  @@index([status])
+  @@index([requesterId])
+  @@map("service_requests")
+}
+
+enum ServiceRequestStatus {
+  SUBMITTED
+  APPROVED
+  IN_PROGRESS
+  FULFILLED
+  REJECTED
+  CANCELLED
+}
+
+// ─── Assets / CMDB ───────────────────────────────────────────
+
+model Asset {
+  id           String      @id @default(uuid())
+  assetTag     String      @unique @map("asset_tag")
+  name         String
+  type         AssetType
+  status       AssetStatus @default(ACTIVE)
+  manufacturer String?
+  model        String?
+  serialNumber String?     @map("serial_number")
+  location     String?
+  purchaseDate DateTime?   @map("purchase_date")
+  warrantyEnd  DateTime?   @map("warranty_end")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  incidents Incident[]
+
+  @@index([assetTag])
+  @@index([type])
+  @@map("assets")
+}
+
+enum AssetType {
+  SERVER
+  WORKSTATION
+  LAPTOP
+  NETWORK_DEVICE
+  PRINTER
+  MOBILE_DEVICE
+  SOFTWARE
+  OTHER
+}
+
+enum AssetStatus {
+  ACTIVE
+  INACTIVE
+  RETIRED
+  MAINTENANCE
+}
+
+// ─── Knowledge Base ──────────────────────────────────────────
+
+model KnowledgeArticle {
+  id          String                 @id @default(uuid())
+  title       String
+  content     String
+  category    String?
+  tags        String[]
+  status      KnowledgeArticleStatus @default(DRAFT)
+  viewCount   Int                    @default(0) @map("view_count")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  publishedAt DateTime?              @map("published_at")
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  @@index([category])
+  @@index([status])
+  @@map("knowledge_articles")
+}
+
+enum KnowledgeArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ─── Comments ────────────────────────────────────────────────
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  isPublic  Boolean  @default(true) @map("is_public")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  incidentId       String?         @map("incident_id")
+  incident         Incident?       @relation(fields: [incidentId], references: [id])
+  serviceRequestId String?         @map("service_request_id")
+  serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+
+  @@index([incidentId])
+  @@index([serviceRequestId])
+  @@map("comments")
+}
+
+// ─── SLA Policies ────────────────────────────────────────────
+
+model SlaPolicy {
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  description        String?
+  responseTimeMinutes Int     @map("response_time_minutes")
+  resolutionTimeMinutes Int   @map("resolution_time_minutes")
+  priority           Priority
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([priority])
+  @@map("sla_policies")
+}
