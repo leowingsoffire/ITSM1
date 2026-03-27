@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './components/Toast';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -13,6 +14,18 @@ import { AdminTeamsPage } from './pages/AdminTeamsPage';
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function NotFoundPage() {
+  const navigate = useNavigate();
+  return (
+    <div className="not-found-page">
+      <div className="not-found-code">404</div>
+      <h2 className="not-found-title">Page not found</h2>
+      <p className="not-found-text">The page you're looking for doesn't exist or has been moved.</p>
+      <button className="btn btn-primary" onClick={() => navigate('/')}>Back to Dashboard</button>
+    </div>
+  );
 }
 
 function AppRoutes() {
@@ -34,6 +47,7 @@ function AppRoutes() {
         <Route path="knowledge" element={<KnowledgePage />} />
         <Route path="admin/users" element={<AdminUsersPage />} />
         <Route path="admin/teams" element={<AdminTeamsPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
@@ -43,7 +57,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

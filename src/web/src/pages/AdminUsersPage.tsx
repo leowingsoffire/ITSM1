@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface User {
   id: string;
@@ -15,36 +17,40 @@ interface User {
 const ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'END_USER'];
 
 export function AdminUsersPage() {
+  const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filterRole, setFilterRole] = useState('');
   const [editUser, setEditUser] = useState<User | null>(null);
 
   function fetchData() {
     const params: Record<string, string> = {};
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterRole) params.role = filterRole;
     api.get('/admin/users', { params })
       .then(({ data }) => setUsers(data.data))
-      .catch(() => setUsers([]))
+      .catch(() => { setUsers([]); toast('error', 'Failed to load users'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [search, filterRole]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterRole]);
 
   async function toggleActive(user: User) {
     try {
       await api.patch(`/admin/users/${user.id}`, { isActive: !user.isActive });
+      toast('success', `User ${!user.isActive ? 'activated' : 'deactivated'}`);
       fetchData();
-    } catch {}
+    } catch { toast('error', 'Failed to update user'); }
   }
 
   async function changeRole(user: User, role: string) {
     try {
       await api.patch(`/admin/users/${user.id}`, { role });
+      toast('success', `Role updated to ${role.replace('_', ' ')}`);
       fetchData();
-    } catch {}
+    } catch { toast('error', 'Failed to change role'); }
   }
 
   return (

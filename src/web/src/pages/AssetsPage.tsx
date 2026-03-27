@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface Asset {
   id: string;
@@ -23,9 +25,11 @@ const TYPES = ['LAPTOP', 'DESKTOP', 'SERVER', 'NETWORK', 'PRINTER', 'PHONE', 'MO
 const STATUSES = ['ACTIVE', 'INACTIVE', 'RETIRED', 'MAINTENANCE'];
 
 export function AssetsPage() {
+  const { toast } = useToast();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -33,16 +37,16 @@ export function AssetsPage() {
 
   function fetchData() {
     const params: Record<string, string> = {};
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterType) params.type = filterType;
     if (filterStatus) params.status = filterStatus;
     api.get('/assets', { params })
       .then(({ data }) => setAssets(data.data))
-      .catch(() => setAssets([]))
+      .catch(() => { setAssets([]); toast('error', 'Failed to load assets'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [search, filterType, filterStatus]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterType, filterStatus]);
 
   return (
     <div>
@@ -71,7 +75,7 @@ export function AssetsPage() {
           <div className="loading-spinner">Loading...</div>
         ) : assets.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">💻</div>
+            <div className="empty-state-icon">◎</div>
             <div className="empty-state-text">No assets found</div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>Add First Asset</button>
           </div>
@@ -92,9 +96,9 @@ export function AssetsPage() {
               <tbody>
                 {assets.map(a => (
                   <tr key={a.id} className="clickable" onClick={() => setShowDetail(a)}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{a.assetTag}</td>
+                    <td className="td-primary">{a.assetTag}</td>
                     <td>{a.name}</td>
-                    <td><span className="badge badge-info" style={{ background: '#ebf8ff', color: '#2b6cb0' }}>{a.type}</span></td>
+                    <td><span className="badge badge-info">{a.type}</span></td>
                     <td><span className={`badge badge-${a.status.toLowerCase()}`}>{a.status}</span></td>
                     <td>{a.manufacturer || '—'}</td>
                     <td>{a.assignedTo ? `${a.assignedTo.firstName} ${a.assignedTo.lastName}` : '—'}</td>
@@ -114,6 +118,7 @@ export function AssetsPage() {
 }
 
 function AssetFormModal({ asset, onClose, onSaved }: { asset?: Asset; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [form, setForm] = useState({
     name: asset?.name || '',
     type: asset?.type || 'LAPTOP',
@@ -141,7 +146,7 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset?: Asset; onClose: (
       }
       onSaved();
     } catch {
-      alert('Failed to save asset');
+      toast('error', 'Failed to save asset');
     } finally {
       setSaving(false);
     }
@@ -214,12 +219,14 @@ function AssetFormModal({ asset, onClose, onSaved }: { asset?: Asset; onClose: (
 }
 
 function AssetDetailModal({ asset, onClose, onRefresh }: { asset: Asset; onClose: () => void; onRefresh: () => void }) {
+  const { toast } = useToast();
   async function updateStatus(status: string) {
     try {
       await api.patch(`/assets/${asset.id}`, { status });
+      toast('success', `Asset ${status.toLowerCase()}`);
       onRefresh();
       onClose();
-    } catch {}
+    } catch { toast('error', 'Failed to update asset'); }
   }
 
   return (

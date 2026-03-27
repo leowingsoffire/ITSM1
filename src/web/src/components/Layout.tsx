@@ -3,16 +3,16 @@ import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
   { section: 'Main' },
-  { to: '/', icon: '📊', label: 'Dashboard' },
+  { to: '/', icon: '⌘', label: 'Dashboard' },
   { section: 'Service Management' },
-  { to: '/incidents', icon: '🔥', label: 'Incidents' },
-  { to: '/service-requests', icon: '📋', label: 'Service Requests' },
+  { to: '/incidents', icon: '⚡', label: 'Incidents' },
+  { to: '/service-requests', icon: '✦', label: 'Service Requests' },
   { section: 'Configuration' },
-  { to: '/assets', icon: '💻', label: 'Assets / CMDB' },
-  { to: '/knowledge', icon: '📚', label: 'Knowledge Base' },
+  { to: '/assets', icon: '◎', label: 'Assets / CMDB' },
+  { to: '/knowledge', icon: '◈', label: 'Knowledge Base' },
   { section: 'Administration' },
-  { to: '/admin/users', icon: '👤', label: 'Users' },
-  { to: '/admin/teams', icon: '👥', label: 'Teams' },
+  { to: '/admin/users', icon: '◉', label: 'Users' },
+  { to: '/admin/teams', icon: '⬡', label: 'Teams' },
 ];
 
 export function Layout() {
@@ -32,6 +32,7 @@ export function Layout() {
     <div className="app-layout">
       <nav className="sidebar">
         <div className="sidebar-brand">
+          <div className="sidebar-brand-icon">IT</div>
           <div>
             <h1>ITSM1</h1>
             <small>Service Management</small>
@@ -49,8 +50,8 @@ export function Layout() {
                 end={item.to === '/'}
                 className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
               >
-                <span className="icon">{item.icon}</span>
-                <span>{item.label}</span>
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
               </NavLink>
             ) : null
           )}
@@ -66,7 +67,7 @@ export function Layout() {
               <div className="sidebar-user-role">{user?.role?.replace('_', ' ') || ''}</div>
             </div>
           </div>
-          <button className="btn btn-outline" style={{ width: '100%', color: '#ccc', borderColor: 'rgba(255,255,255,0.2)' }} onClick={handleLogout}>
+          <button className="sidebar-signout" onClick={handleLogout}>
             Sign Out
           </button>
         </div>

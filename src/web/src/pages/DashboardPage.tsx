@@ -20,6 +20,10 @@ interface DashboardData {
   recentRequests: Array<{ id: string; number: string; title: string; status: string; priority: string; createdAt: string; requester?: { firstName: string; lastName: string } | null }>;
 }
 
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-SG', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +36,7 @@ export function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="loading-spinner">Loading dashboard...</div>;
+  if (loading) return <div className="loading-spinner">Loading dashboard…</div>;
   if (!data) return <div className="empty-state"><div className="empty-state-text">Unable to load dashboard data.</div></div>;
 
   const s = data.summary;
@@ -44,49 +48,49 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Overview of your IT service operations</p>
+          <p className="page-subtitle">Real-time overview of your IT service operations</p>
         </div>
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon danger">🔥</div>
+        <div className="stat-card stat-danger">
+          <div className="stat-icon danger">⚡</div>
           <div className="stat-content">
             <div className="stat-label">Open Incidents</div>
             <div className="stat-value">{s.openIncidents}</div>
             <div className="stat-change">{s.criticalIncidents} critical</div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon warning">📋</div>
+        <div className="stat-card stat-warning">
+          <div className="stat-icon warning">✦</div>
           <div className="stat-content">
             <div className="stat-label">Pending Requests</div>
             <div className="stat-value">{s.pendingRequests}</div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon success">✅</div>
+        <div className="stat-card stat-success">
+          <div className="stat-icon success">✓</div>
           <div className="stat-content">
             <div className="stat-label">Resolved Today</div>
             <div className="stat-value">{s.resolvedToday}</div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon danger">⏰</div>
+        <div className="stat-card stat-danger">
+          <div className="stat-icon danger">◉</div>
           <div className="stat-content">
             <div className="stat-label">SLA Breaches</div>
             <div className="stat-value">{s.slaBreaches}</div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon info">💻</div>
+        <div className="stat-card stat-info">
+          <div className="stat-icon info">◎</div>
           <div className="stat-content">
             <div className="stat-label">Active Assets</div>
             <div className="stat-value">{s.totalAssets}</div>
           </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon info">📈</div>
+        <div className="stat-card stat-purple">
+          <div className="stat-icon purple">↑</div>
           <div className="stat-content">
             <div className="stat-label">New This Week</div>
             <div className="stat-value">{s.newIncidentsThisWeek}</div>
@@ -95,16 +99,16 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="grid-2 mb-lg">
         <div className="card">
           <div className="card-header"><span className="card-title">Incidents by Priority</span></div>
           <div className="card-body">
             <div className="chart-bars">
               {([
-                { label: 'Critical', value: data.charts.incidentsByPriority.critical, color: '#e53e3e' },
-                { label: 'High', value: data.charts.incidentsByPriority.high, color: '#ed8936' },
-                { label: 'Medium', value: data.charts.incidentsByPriority.medium, color: '#d69e2e' },
-                { label: 'Low', value: data.charts.incidentsByPriority.low, color: '#38a169' },
+                { label: 'Critical', value: data.charts.incidentsByPriority.critical, color: '#ef4444' },
+                { label: 'High', value: data.charts.incidentsByPriority.high, color: '#f97316' },
+                { label: 'Medium', value: data.charts.incidentsByPriority.medium, color: '#eab308' },
+                { label: 'Low', value: data.charts.incidentsByPriority.low, color: '#10b981' },
               ]).map(b => (
                 <div className="chart-bar" key={b.label}>
                   <div className="chart-bar-value">{b.value}</div>
@@ -121,11 +125,11 @@ export function DashboardPage() {
           <div className="card-body">
             <div className="chart-bars">
               {([
-                { label: 'New', value: data.charts.incidentsByStatus.new, color: '#3182ce' },
-                { label: 'In Progress', value: data.charts.incidentsByStatus.inProgress, color: '#d69e2e' },
-                { label: 'On Hold', value: data.charts.incidentsByStatus.onHold, color: '#e53e3e' },
-                { label: 'Resolved', value: data.charts.incidentsByStatus.resolved, color: '#38a169' },
-                { label: 'Closed', value: data.charts.incidentsByStatus.closed, color: '#718096' },
+                { label: 'New', value: data.charts.incidentsByStatus.new, color: '#3b82f6' },
+                { label: 'In Progress', value: data.charts.incidentsByStatus.inProgress, color: '#eab308' },
+                { label: 'On Hold', value: data.charts.incidentsByStatus.onHold, color: '#ef4444' },
+                { label: 'Resolved', value: data.charts.incidentsByStatus.resolved, color: '#10b981' },
+                { label: 'Closed', value: data.charts.incidentsByStatus.closed, color: '#94a3b8' },
               ]).map(b => (
                 <div className="chart-bar" key={b.label}>
                   <div className="chart-bar-value">{b.value}</div>
@@ -138,28 +142,29 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="grid-2">
         <div className="card">
           <div className="card-header">
             <span className="card-title">Recent Incidents</span>
-            <button className="btn btn-sm btn-outline" onClick={() => navigate('/incidents')}>View All</button>
+            <button className="btn btn-sm btn-outline" onClick={() => navigate('/incidents')}>View All →</button>
           </div>
           <div className="table-container">
             <table className="data-table">
               <thead>
-                <tr><th>Number</th><th>Title</th><th>Priority</th><th>Status</th></tr>
+                <tr><th>Number</th><th>Title</th><th>Priority</th><th>Status</th><th>Created</th></tr>
               </thead>
               <tbody>
                 {data.recentIncidents.map(inc => (
                   <tr key={inc.id} className="clickable" onClick={() => navigate('/incidents')}>
-                    <td>{inc.number}</td>
+                    <td className="td-primary">{inc.number}</td>
                     <td>{inc.title}</td>
                     <td><span className={`badge badge-${inc.priority.toLowerCase()}`}>{inc.priority}</span></td>
-                    <td><span className={`badge badge-${inc.status.toLowerCase()}`}>{inc.status.replace('_', ' ')}</span></td>
+                    <td><span className={`badge badge-${inc.status.toLowerCase()}`}>{inc.status.replace(/_/g, ' ')}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(inc.createdAt)}</td>
                   </tr>
                 ))}
                 {data.recentIncidents.length === 0 && (
-                  <tr><td colSpan={4} style={{ textAlign: 'center', color: '#718096' }}>No incidents</td></tr>
+                  <tr><td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No recent incidents</td></tr>
                 )}
               </tbody>
             </table>
@@ -169,24 +174,25 @@ export function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Recent Service Requests</span>
-            <button className="btn btn-sm btn-outline" onClick={() => navigate('/service-requests')}>View All</button>
+            <button className="btn btn-sm btn-outline" onClick={() => navigate('/service-requests')}>View All →</button>
           </div>
           <div className="table-container">
             <table className="data-table">
               <thead>
-                <tr><th>Number</th><th>Title</th><th>Priority</th><th>Status</th></tr>
+                <tr><th>Number</th><th>Title</th><th>Priority</th><th>Status</th><th>Created</th></tr>
               </thead>
               <tbody>
                 {data.recentRequests.map(sr => (
                   <tr key={sr.id} className="clickable" onClick={() => navigate('/service-requests')}>
-                    <td>{sr.number}</td>
+                    <td className="td-primary">{sr.number}</td>
                     <td>{sr.title}</td>
                     <td><span className={`badge badge-${sr.priority.toLowerCase()}`}>{sr.priority}</span></td>
-                    <td><span className={`badge badge-${sr.status.toLowerCase()}`}>{sr.status.replace('_', ' ')}</span></td>
+                    <td><span className={`badge badge-${sr.status.toLowerCase()}`}>{sr.status.replace(/_/g, ' ')}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(sr.createdAt)}</td>
                   </tr>
                 ))}
                 {data.recentRequests.length === 0 && (
-                  <tr><td colSpan={4} style={{ textAlign: 'center', color: '#718096' }}>No requests</td></tr>
+                  <tr><td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No recent requests</td></tr>
                 )}
               </tbody>
             </table>

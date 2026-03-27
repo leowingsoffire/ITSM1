@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface ServiceRequest {
   id: string;
@@ -18,9 +20,11 @@ const STATUSES = ['SUBMITTED', 'APPROVED', 'IN_PROGRESS', 'FULFILLED', 'REJECTED
 const PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
 export function ServiceRequestsPage() {
+  const { toast } = useToast();
   const [items, setItems] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -28,16 +32,16 @@ export function ServiceRequestsPage() {
 
   function fetchData() {
     const params: Record<string, string> = {};
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
     api.get('/service-requests', { params })
       .then(({ data }) => setItems(data.data))
-      .catch(() => setItems([]))
+      .catch(() => { setItems([]); toast('error', 'Failed to load service requests'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [search, filterStatus, filterPriority]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, filterPriority]);
 
   return (
     <div>
@@ -66,7 +70,7 @@ export function ServiceRequestsPage() {
           <div className="loading-spinner">Loading...</div>
         ) : items.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">📋</div>
+            <div className="empty-state-icon">✦</div>
             <div className="empty-state-text">No service requests found</div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>Create First Request</button>
           </div>
@@ -87,7 +91,7 @@ export function ServiceRequestsPage() {
               <tbody>
                 {items.map(sr => (
                   <tr key={sr.id} className="clickable" onClick={() => setShowDetail(sr)}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{sr.number}</td>
+                    <td className="td-primary">{sr.number}</td>
                     <td>{sr.title}</td>
                     <td><span className={`badge badge-${sr.priority.toLowerCase()}`}>{sr.priority}</span></td>
                     <td><span className={`badge badge-${sr.status.toLowerCase()}`}>{sr.status.replace('_', ' ')}</span></td>
@@ -109,6 +113,7 @@ export function ServiceRequestsPage() {
 }
 
 function SRFormModal({ sr, onClose, onSaved }: { sr?: ServiceRequest; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [form, setForm] = useState({
     title: sr?.title || '',
     description: sr?.description || '',
@@ -131,7 +136,7 @@ function SRFormModal({ sr, onClose, onSaved }: { sr?: ServiceRequest; onClose: (
       }
       onSaved();
     } catch {
-      alert('Failed to save');
+      toast('error', 'Failed to save request');
     } finally {
       setSaving(false);
     }
@@ -178,12 +183,14 @@ function SRFormModal({ sr, onClose, onSaved }: { sr?: ServiceRequest; onClose: (
 }
 
 function SRDetailModal({ sr, onClose, onRefresh }: { sr: ServiceRequest; onClose: () => void; onRefresh: () => void }) {
+  const { toast } = useToast();
   async function updateStatus(status: string) {
     try {
       await api.patch(`/service-requests/${sr.id}`, { status });
+      toast('success', `Request ${status.toLowerCase().replace('_', ' ')}`);
       onRefresh();
       onClose();
-    } catch {}
+    } catch { toast('error', 'Failed to update status'); }
   }
 
   return (

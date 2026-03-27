@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface Article {
   id: string;
@@ -17,9 +19,11 @@ interface Article {
 const KB_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
 
 export function KnowledgePage() {
+  const { toast } = useToast();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Article | null>(null);
@@ -27,15 +31,15 @@ export function KnowledgePage() {
 
   function fetchData() {
     const params: Record<string, string> = {};
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     api.get('/knowledge', { params })
       .then(({ data }) => setArticles(data.data))
-      .catch(() => setArticles([]))
+      .catch(() => { setArticles([]); toast('error', 'Failed to load articles'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [search, filterStatus]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus]);
 
   return (
     <div>
@@ -60,31 +64,29 @@ export function KnowledgePage() {
       ) : articles.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">📚</div>
+            <div className="empty-state-icon">◈</div>
             <div className="empty-state-text">No articles found</div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>Write First Article</button>
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div className="kb-grid">
           {articles.map(a => (
-            <div key={a.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowDetail(a)}>
-              <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span className={`badge badge-${a.status.toLowerCase()}`}>{a.status}</span>
-                    {a.category && <span className="text-xs text-muted">{a.category}</span>}
-                  </div>
-                  <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, margin: '4px 0' }}>{a.title}</h3>
-                  <p className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 600 }}>
-                    {a.content.substring(0, 150)}...
-                  </p>
+            <div key={a.id} className="kb-card" onClick={() => setShowDetail(a)}>
+              <div className="kb-card-body">
+                <div className="kb-card-meta">
+                  <span className={`badge badge-${a.status.toLowerCase()}`}>{a.status}</span>
+                  {a.category && <span className="text-xs text-muted">{a.category}</span>}
                 </div>
-                <div style={{ textAlign: 'right', minWidth: 100 }}>
-                  <div className="text-sm">{a.viewCount} views</div>
-                  <div className="text-xs text-muted">{a.author ? `${a.author.firstName} ${a.author.lastName}` : ''}</div>
-                  <div className="text-xs text-muted">{new Date(a.createdAt).toLocaleDateString()}</div>
-                </div>
+                <h3 className="kb-card-title">{a.title}</h3>
+                <p className="kb-card-excerpt">
+                  {a.content.substring(0, 150)}...
+                </p>
+              </div>
+              <div className="kb-card-footer">
+                <div className="text-sm">{a.viewCount} views</div>
+                <div className="text-xs text-muted">{a.author ? `${a.author.firstName} ${a.author.lastName}` : ''}</div>
+                <div className="text-xs text-muted">{new Date(a.createdAt).toLocaleDateString()}</div>
               </div>
             </div>
           ))}
@@ -99,6 +101,7 @@ export function KnowledgePage() {
 }
 
 function ArticleFormModal({ article, onClose, onSaved }: { article?: Article; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [form, setForm] = useState({
     title: article?.title || '',
     content: article?.content || '',
@@ -122,7 +125,7 @@ function ArticleFormModal({ article, onClose, onSaved }: { article?: Article; on
       }
       onSaved();
     } catch {
-      alert('Failed to save article');
+      toast('error', 'Failed to save article');
     } finally {
       setSaving(false);
     }
@@ -173,12 +176,14 @@ function ArticleFormModal({ article, onClose, onSaved }: { article?: Article; on
 }
 
 function ArticleDetailModal({ article, onClose, onEdit, onRefresh }: { article: Article; onClose: () => void; onEdit: () => void; onRefresh: () => void }) {
+  const { toast } = useToast();
   async function updateStatus(status: string) {
     try {
       await api.patch(`/knowledge/${article.id}`, { status });
+      toast('success', `Article ${status.toLowerCase()}`);
       onRefresh();
       onClose();
-    } catch {}
+    } catch { toast('error', 'Failed to update article'); }
   }
 
   return (
@@ -195,22 +200,22 @@ function ArticleDetailModal({ article, onClose, onEdit, onRefresh }: { article: 
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <div className="modal-body">
-          <div className="detail-grid" style={{ marginBottom: 16 }}>
+          <div className="detail-grid mb-md">
             <div><div className="detail-label">Category</div><div className="detail-value">{article.category || '—'}</div></div>
             <div><div className="detail-label">Author</div><div className="detail-value">{article.author ? `${article.author.firstName} ${article.author.lastName}` : '—'}</div></div>
             <div><div className="detail-label">Created</div><div className="detail-value">{new Date(article.createdAt).toLocaleString()}</div></div>
             <div><div className="detail-label">Published</div><div className="detail-value">{article.publishedAt ? new Date(article.publishedAt).toLocaleString() : 'Not published'}</div></div>
           </div>
-          {article.tags && <div style={{ marginBottom: 16 }}>
+          {article.tags && <div className="mb-md">
             <div className="detail-label">Tags</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {article.tags.split(',').map((t, i) => <span key={i} className="badge" style={{ background: '#edf2f7', color: '#4a5568' }}>{t.trim()}</span>)}
+            <div className="tags">
+              {article.tags.split(',').map((t, i) => <span key={i} className="tag">{t.trim()}</span>)}
             </div>
           </div>}
-          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontSize: 'var(--text-sm)' }}>
+          <div className="article-content">
             {article.content}
           </div>
-          <div className="btn-group" style={{ marginTop: 24 }}>
+          <div className="btn-group mt-lg">
             <button className="btn btn-outline" onClick={onEdit}>Edit</button>
             {article.status === 'DRAFT' && <button className="btn btn-success" onClick={() => updateStatus('PUBLISHED')}>Publish</button>}
             {article.status === 'PUBLISHED' && <button className="btn btn-outline" onClick={() => updateStatus('ARCHIVED')}>Archive</button>}

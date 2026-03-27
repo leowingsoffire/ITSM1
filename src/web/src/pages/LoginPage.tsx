@@ -28,10 +28,11 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
+          <div className="login-brand-logo">IT</div>
           <h1>ITSM1</h1>
-          <p>IT Service Management Platform</p>
+          <p>Enterprise IT Service Management</p>
         </div>
-        {error && <div className="login-error">{error}</div>}
+        {error && <div className="login-error">✕ {error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Email Address</label>
@@ -40,8 +41,9 @@ export function LoginPage() {
               className="form-input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@itsm1.local"
+              placeholder="you@company.com"
               required
+              autoFocus
             />
           </div>
           <div className="form-group">
@@ -51,18 +53,18 @@ export function LoginPage() {
               className="form-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
+              placeholder="••••••••"
               required
               minLength={6}
             />
           </div>
-          <button type="submit" disabled={loading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
-            {loading ? 'Signing in...' : 'Sign In'}
+          <button type="submit" disabled={loading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
-        <p className="text-xs text-muted" style={{ textAlign: 'center', marginTop: 16 }}>
-          Demo: admin@itsm1.local / admin123
-        </p>
+        <div className="login-demo">
+          <strong>Demo credentials:</strong> admin@itsm1.local / admin123
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
 
 interface Team {
   id: string;
@@ -41,29 +42,27 @@ export function AdminTeamsPage() {
       ) : teams.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">👥</div>
+            <div className="empty-state-icon">⬡</div>
             <div className="empty-state-text">No teams found</div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>Create First Team</button>
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div className="team-grid">
           {teams.map(t => (
-            <div key={t.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setShowDetail(t)}>
-              <div className="card-body">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, marginBottom: 4 }}>{t.name}</h3>
-                    <p className="text-sm text-muted">{t.description || 'No description'}</p>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 700 }}>{t._count?.members ?? 0}</div>
-                    <div className="text-xs text-muted">members</div>
-                  </div>
+            <div key={t.id} className="team-card" onClick={() => setShowDetail(t)}>
+              <div className="team-card-body">
+                <div className="team-card-info">
+                  <h3 className="team-card-name">{t.name}</h3>
+                  <p className="text-sm text-muted">{t.description || 'No description'}</p>
                 </div>
-                <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                  <button className="btn btn-sm btn-outline" onClick={e => { e.stopPropagation(); setShowEdit(t); }}>Edit</button>
+                <div className="team-card-count">
+                  <div className="team-card-number">{t._count?.members ?? 0}</div>
+                  <div className="text-xs text-muted">members</div>
                 </div>
+              </div>
+              <div className="team-card-actions">
+                <button className="btn btn-sm btn-outline" onClick={e => { e.stopPropagation(); setShowEdit(t); }}>Edit</button>
               </div>
             </div>
           ))}
@@ -78,6 +77,7 @@ export function AdminTeamsPage() {
 }
 
 function TeamFormModal({ team, onClose, onSaved }: { team?: Team; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [name, setName] = useState(team?.name || '');
   const [description, setDescription] = useState(team?.description || '');
   const [saving, setSaving] = useState(false);
@@ -94,7 +94,7 @@ function TeamFormModal({ team, onClose, onSaved }: { team?: Team; onClose: () =>
       }
       onSaved();
     } catch {
-      alert('Failed to save team');
+      toast('error', 'Failed to save team');
     } finally {
       setSaving(false);
     }

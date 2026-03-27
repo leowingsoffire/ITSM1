@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../components/Toast';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface Incident {
   id: string;
@@ -26,9 +28,11 @@ const IMPACTS = ['HIGH', 'MEDIUM', 'LOW'];
 const URGENCIES = ['HIGH', 'MEDIUM', 'LOW'];
 
 export function IncidentsPage() {
+  const { toast } = useToast();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 300);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -37,16 +41,16 @@ export function IncidentsPage() {
 
   function fetchIncidents() {
     const params: Record<string, string> = {};
-    if (search) params.search = search;
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
     api.get('/incidents', { params })
       .then(({ data }) => setIncidents(data.data))
-      .catch(() => setIncidents([]))
+      .catch(() => { setIncidents([]); toast('error', 'Failed to load incidents'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchIncidents(); }, [search, filterStatus, filterPriority]);
+  useEffect(() => { fetchIncidents(); }, [debouncedSearch, filterStatus, filterPriority]);
 
   return (
     <div>
@@ -75,7 +79,7 @@ export function IncidentsPage() {
           <div className="loading-spinner">Loading incidents...</div>
         ) : incidents.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🔥</div>
+            <div className="empty-state-icon">⚡</div>
             <div className="empty-state-text">No incidents found</div>
             <button className="btn btn-primary" onClick={() => setShowCreate(true)}>Create First Incident</button>
           </div>
@@ -96,7 +100,7 @@ export function IncidentsPage() {
               <tbody>
                 {incidents.map(inc => (
                   <tr key={inc.id} className="clickable" onClick={() => setShowDetail(inc)}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{inc.number}</td>
+                    <td className="td-primary">{inc.number}</td>
                     <td>{inc.title}</td>
                     <td><span className={`badge badge-${inc.priority.toLowerCase()}`}>{inc.priority}</span></td>
                     <td><span className={`badge badge-${inc.status.toLowerCase()}`}>{inc.status.replace('_', ' ')}</span></td>
@@ -119,6 +123,7 @@ export function IncidentsPage() {
 }
 
 function IncidentFormModal({ incident, onClose, onSaved }: { incident?: Incident; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [form, setForm] = useState({
     title: incident?.title || '',
     description: incident?.description || '',
@@ -143,7 +148,7 @@ function IncidentFormModal({ incident, onClose, onSaved }: { incident?: Incident
       }
       onSaved();
     } catch {
-      alert('Failed to save incident');
+      toast('error', 'Failed to save incident');
     } finally {
       setSaving(false);
     }
@@ -212,6 +217,7 @@ function IncidentFormModal({ incident, onClose, onSaved }: { incident?: Incident
 }
 
 function IncidentDetailModal({ incident, onClose, onEdit, onRefresh }: { incident: Incident; onClose: () => void; onEdit: () => void; onRefresh: () => void }) {
+  const { toast } = useToast();
   const [comments, setComments] = useState<Array<{ id: string; content: string; createdAt: string; author: { firstName: string; lastName: string } }>>([]);
   const [newComment, setNewComment] = useState('');
 
@@ -226,15 +232,16 @@ function IncidentDetailModal({ incident, onClose, onEdit, onRefresh }: { inciden
       await api.post('/admin/comments', { content: newComment, incidentId: incident.id });
       setNewComment('');
       api.get(`/admin/comments?incidentId=${incident.id}`).then(({ data }) => setComments(data.data || [])).catch(() => {});
-    } catch {}
+    } catch { toast('error', 'Failed to add comment'); }
   }
 
   async function updateStatus(status: string) {
     try {
       await api.patch(`/incidents/${incident.id}`, { status });
+      toast('success', `Incident ${status.toLowerCase().replace('_', ' ')}`);
       onRefresh();
       onClose();
-    } catch {}
+    } catch { toast('error', 'Failed to update status'); }
   }
 
   return (
