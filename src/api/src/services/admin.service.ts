@@ -66,23 +66,25 @@ export async function getUserById(id: string) {
 }
 
 export async function updateUser(id: string, input: UpdateUserInput) {
-  const existing = await prisma.user.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'User not found', 'NOT_FOUND');
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: input,
+      select: {
+        id: true, email: true, firstName: true, lastName: true,
+        role: true, isActive: true, createdAt: true,
+        team: { select: { id: true, name: true } },
+      },
+    });
+
+    logger.info({ userId: id, role: input.role }, 'User updated');
+    return user;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new AppError(404, 'User not found', 'NOT_FOUND');
+    }
+    throw err;
   }
-
-  const user = await prisma.user.update({
-    where: { id },
-    data: input,
-    select: {
-      id: true, email: true, firstName: true, lastName: true,
-      role: true, isActive: true, createdAt: true,
-      team: { select: { id: true, name: true } },
-    },
-  });
-
-  logger.info({ userId: id, role: input.role }, 'User updated');
-  return user;
 }
 
 // ─── Teams ───────────────────────────────────────────────────
@@ -103,14 +105,16 @@ export async function createTeam(input: CreateTeamInput) {
 }
 
 export async function updateTeam(id: string, input: UpdateTeamInput) {
-  const existing = await prisma.team.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'Team not found', 'NOT_FOUND');
+  try {
+    const team = await prisma.team.update({ where: { id }, data: input });
+    logger.info({ teamId: id }, 'Team updated');
+    return team;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new AppError(404, 'Team not found', 'NOT_FOUND');
+    }
+    throw err;
   }
-
-  const team = await prisma.team.update({ where: { id }, data: input });
-  logger.info({ teamId: id }, 'Team updated');
-  return team;
 }
 
 export async function getTeamById(id: string) {

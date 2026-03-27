@@ -34,12 +34,13 @@ export async function getArticleById(id: string) {
     throw new AppError(404, 'Article not found', 'NOT_FOUND');
   }
 
-  await prisma.knowledgeArticle.update({
+  // Fire-and-forget view count increment — don't block the response
+  prisma.knowledgeArticle.update({
     where: { id },
     data: { viewCount: { increment: 1 } },
-  });
+  }).catch(() => {});
 
-  return article;
+  return { ...article, viewCount: article.viewCount + 1 };
 }
 
 export async function listArticles(query: ListArticlesQuery) {
@@ -52,7 +53,6 @@ export async function listArticles(query: ListArticlesQuery) {
   if (search) {
     where.OR = [
       { title: { contains: search } },
-      { content: { contains: search } },
     ];
   }
 
@@ -78,22 +78,24 @@ export async function listArticles(query: ListArticlesQuery) {
 }
 
 export async function updateArticle(id: string, input: UpdateArticleInput) {
-  const existing = await prisma.knowledgeArticle.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'Article not found', 'NOT_FOUND');
-  }
+  const article = await prisma.$transaction(async (tx) => {
+    const existing = await tx.knowledgeArticle.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError(404, 'Article not found', 'NOT_FOUND');
+    }
 
-  const updateData: Prisma.KnowledgeArticleUpdateInput = { ...input };
-  if (input.status === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
-    updateData.publishedAt = new Date();
-  }
+    const updateData: Prisma.KnowledgeArticleUpdateInput = { ...input };
+    if (input.status === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
+      updateData.publishedAt = new Date();
+    }
 
-  const article = await prisma.knowledgeArticle.update({
-    where: { id },
-    data: updateData,
-    include: {
-      author: { select: { id: true, firstName: true, lastName: true } },
-    },
+    return tx.knowledgeArticle.update({
+      where: { id },
+      data: updateData,
+      include: {
+        author: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
   });
 
   logger.info({ articleId: id, status: input.status }, 'Article updated');

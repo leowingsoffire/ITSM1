@@ -84,7 +84,6 @@ export async function listIncidents(query: ListIncidentsQuery) {
     where.OR = [
       { title: { contains: search } },
       { number: { contains: search } },
-      { description: { contains: search } },
     ];
   }
 
@@ -114,27 +113,29 @@ export async function listIncidents(query: ListIncidentsQuery) {
 }
 
 export async function updateIncident(id: string, input: UpdateIncidentInput) {
-  const existing = await prisma.incident.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'Incident not found', 'NOT_FOUND');
-  }
+  const incident = await prisma.$transaction(async (tx) => {
+    const existing = await tx.incident.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError(404, 'Incident not found', 'NOT_FOUND');
+    }
 
-  const updateData: Prisma.IncidentUpdateInput = { ...input };
+    const updateData: Prisma.IncidentUpdateInput = { ...input };
 
-  if (input.status === 'RESOLVED' && existing.status !== 'RESOLVED') {
-    updateData.resolvedAt = new Date();
-  }
-  if (input.status === 'CLOSED' && existing.status !== 'CLOSED') {
-    updateData.closedAt = new Date();
-  }
+    if (input.status === 'RESOLVED' && existing.status !== 'RESOLVED') {
+      updateData.resolvedAt = new Date();
+    }
+    if (input.status === 'CLOSED' && existing.status !== 'CLOSED') {
+      updateData.closedAt = new Date();
+    }
 
-  const incident = await prisma.incident.update({
-    where: { id },
-    data: updateData,
-    include: {
-      assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
-      createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
-    },
+    return tx.incident.update({
+      where: { id },
+      data: updateData,
+      include: {
+        assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
   });
 
   logger.info({ incidentId: id, status: input.status }, 'Incident updated');

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authRouter } from './auth.routes';
 import { incidentRouter } from './incident.routes';
 import { dashboardRouter } from './dashboard.routes';
@@ -8,12 +9,13 @@ import { knowledgeRouter } from './knowledge.routes';
 import { adminRouter } from './admin.routes';
 
 const router = Router();
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true });
 
 router.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-router.use('/auth', authRouter);
+router.use('/auth', authLimiter, authRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/incidents', incidentRouter);
 router.use('/service-requests', serviceRequestRouter);

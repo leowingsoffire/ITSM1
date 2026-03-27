@@ -73,7 +73,6 @@ export async function listServiceRequests(query: ListServiceRequestsQuery) {
     where.OR = [
       { title: { contains: search } },
       { number: { contains: search } },
-      { description: { contains: search } },
     ];
   }
 
@@ -97,22 +96,24 @@ export async function listServiceRequests(query: ListServiceRequestsQuery) {
 }
 
 export async function updateServiceRequest(id: string, input: UpdateServiceRequestInput) {
-  const existing = await prisma.serviceRequest.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'Service request not found', 'NOT_FOUND');
-  }
+  const sr = await prisma.$transaction(async (tx) => {
+    const existing = await tx.serviceRequest.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError(404, 'Service request not found', 'NOT_FOUND');
+    }
 
-  const updateData: Prisma.ServiceRequestUpdateInput = { ...input };
-  if (input.status === 'FULFILLED' && existing.status !== 'FULFILLED') {
-    updateData.fulfilledAt = new Date();
-  }
+    const updateData: Prisma.ServiceRequestUpdateInput = { ...input };
+    if (input.status === 'FULFILLED' && existing.status !== 'FULFILLED') {
+      updateData.fulfilledAt = new Date();
+    }
 
-  const sr = await prisma.serviceRequest.update({
-    where: { id },
-    data: updateData,
-    include: {
-      requester: { select: { id: true, firstName: true, lastName: true, email: true } },
-    },
+    return tx.serviceRequest.update({
+      where: { id },
+      data: updateData,
+      include: {
+        requester: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
   });
 
   logger.info({ srId: id, status: input.status }, 'Service request updated');

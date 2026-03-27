@@ -88,6 +88,10 @@ model Incident {
   @@index([priority])
   @@index([assignedToId])
   @@index([createdAt])
+  @@index([category])
+  @@index([createdById])
+  @@index([assignedTeamId])
+  @@index([slaBreached])
   @@map("incidents")
 }
 
@@ -140,6 +144,7 @@ model ServiceRequest {
 
   @@index([status])
   @@index([requesterId])
+  @@index([priority])
   @@map("service_requests")
 }
 
@@ -173,6 +178,7 @@ model Asset {
 
   @@index([assetTag])
   @@index([type])
+  @@index([status])
   @@map("assets")
 }
 
@@ -213,6 +219,7 @@ model KnowledgeArticle {
 
   @@index([category])
   @@index([status])
+  @@index([authorId])
   @@map("knowledge_articles")
 }
 

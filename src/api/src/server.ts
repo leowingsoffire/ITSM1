@@ -11,7 +11,7 @@ const app = express();
 // Security
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true }));
 
 // Parsing
 app.use(express.json({ limit: '1mb' }));

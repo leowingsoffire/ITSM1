@@ -89,22 +89,24 @@ export async function listAssets(query: ListAssetsQuery) {
 }
 
 export async function updateAsset(id: string, input: UpdateAssetInput) {
-  const existing = await prisma.asset.findUnique({ where: { id } });
-  if (!existing) {
-    throw new AppError(404, 'Asset not found', 'NOT_FOUND');
-  }
-
   const updateData: Prisma.AssetUpdateInput = {
     ...input,
     purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : undefined,
     warrantyEnd: input.warrantyEnd ? new Date(input.warrantyEnd) : undefined,
   };
 
-  const asset = await prisma.asset.update({
-    where: { id },
-    data: updateData,
-  });
+  try {
+    const asset = await prisma.asset.update({
+      where: { id },
+      data: updateData,
+    });
 
-  logger.info({ assetId: id }, 'Asset updated');
-  return asset;
+    logger.info({ assetId: id }, 'Asset updated');
+    return asset;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      throw new AppError(404, 'Asset not found', 'NOT_FOUND');
+    }
+    throw err;
+  }
 }

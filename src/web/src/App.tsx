@@ -1,16 +1,18 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { IncidentsPage } from './pages/IncidentsPage';
-import { ServiceRequestsPage } from './pages/ServiceRequestsPage';
-import { AssetsPage } from './pages/AssetsPage';
-import { KnowledgePage } from './pages/KnowledgePage';
-import { AdminUsersPage } from './pages/AdminUsersPage';
-import { AdminTeamsPage } from './pages/AdminTeamsPage';
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const IncidentsPage = lazy(() => import('./pages/IncidentsPage').then(m => ({ default: m.IncidentsPage })));
+const ServiceRequestsPage = lazy(() => import('./pages/ServiceRequestsPage').then(m => ({ default: m.ServiceRequestsPage })));
+const AssetsPage = lazy(() => import('./pages/AssetsPage').then(m => ({ default: m.AssetsPage })));
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage').then(m => ({ default: m.KnowledgePage })));
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
+const AdminTeamsPage = lazy(() => import('./pages/AdminTeamsPage').then(m => ({ default: m.AdminTeamsPage })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -47,13 +49,13 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
-        <Route path="incidents" element={<IncidentsPage />} />
-        <Route path="service-requests" element={<ServiceRequestsPage />} />
-        <Route path="assets" element={<AssetsPage />} />
-        <Route path="knowledge" element={<KnowledgePage />} />
-        <Route path="admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
-        <Route path="admin/teams" element={<AdminRoute><AdminTeamsPage /></AdminRoute>} />
+        <Route index element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><DashboardPage /></Suspense>} />
+        <Route path="incidents" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><IncidentsPage /></Suspense>} />
+        <Route path="service-requests" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><ServiceRequestsPage /></Suspense>} />
+        <Route path="assets" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><AssetsPage /></Suspense>} />
+        <Route path="knowledge" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><KnowledgePage /></Suspense>} />
+        <Route path="admin/users" element={<AdminRoute><Suspense fallback={<div className="loading-spinner">Loading...</div>}><AdminUsersPage /></Suspense></AdminRoute>} />
+        <Route path="admin/teams" element={<AdminRoute><Suspense fallback={<div className="loading-spinner">Loading...</div>}><AdminTeamsPage /></Suspense></AdminRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

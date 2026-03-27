@@ -1,9 +1,17 @@
 import { prisma } from '../models';
 import { logger } from '../config';
 
+let dashboardCache: { data: unknown; expiry: number } | null = null;
+const CACHE_TTL_MS = 30_000;
+
 export async function getDashboardStats() {
+  if (dashboardCache && Date.now() < dashboardCache.expiry) {
+    return dashboardCache.data;
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const [
     openIncidents,
@@ -13,8 +21,8 @@ export async function getDashboardStats() {
     slaBreaches,
     totalAssets,
     newIncidentsThisWeek,
-    incidentsByPriority,
-    incidentsByStatus,
+    byPriority,
+    byStatus,
     recentIncidents,
     recentRequests,
   ] = await Promise.all([
@@ -35,25 +43,17 @@ export async function getDashboardStats() {
     }),
     prisma.asset.count({ where: { status: 'ACTIVE' } }),
     prisma.incident.count({
-      where: {
-        createdAt: {
-          gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-        },
-      },
+      where: { createdAt: { gte: oneWeekAgo } },
     }),
-    Promise.all([
-      prisma.incident.count({ where: { priority: 'CRITICAL', status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } } }),
-      prisma.incident.count({ where: { priority: 'HIGH', status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } } }),
-      prisma.incident.count({ where: { priority: 'MEDIUM', status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } } }),
-      prisma.incident.count({ where: { priority: 'LOW', status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } } }),
-    ]),
-    Promise.all([
-      prisma.incident.count({ where: { status: 'NEW' } }),
-      prisma.incident.count({ where: { status: 'IN_PROGRESS' } }),
-      prisma.incident.count({ where: { status: 'ON_HOLD' } }),
-      prisma.incident.count({ where: { status: 'RESOLVED' } }),
-      prisma.incident.count({ where: { status: 'CLOSED' } }),
-    ]),
+    prisma.incident.groupBy({
+      by: ['priority'],
+      where: { status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } },
+      _count: true,
+    }),
+    prisma.incident.groupBy({
+      by: ['status'],
+      _count: true,
+    }),
     prisma.incident.findMany({
       take: 5,
       orderBy: { createdAt: 'desc' },
@@ -72,9 +72,12 @@ export async function getDashboardStats() {
     }),
   ]);
 
+  const priorityMap = Object.fromEntries(byPriority.map(r => [r.priority, r._count]));
+  const statusMap = Object.fromEntries(byStatus.map(r => [r.status, r._count]));
+
   logger.debug('Dashboard stats fetched');
 
-  return {
+  const result = {
     summary: {
       openIncidents,
       criticalIncidents,
@@ -86,20 +89,23 @@ export async function getDashboardStats() {
     },
     charts: {
       incidentsByPriority: {
-        critical: incidentsByPriority[0],
-        high: incidentsByPriority[1],
-        medium: incidentsByPriority[2],
-        low: incidentsByPriority[3],
+        critical: priorityMap['CRITICAL'] || 0,
+        high: priorityMap['HIGH'] || 0,
+        medium: priorityMap['MEDIUM'] || 0,
+        low: priorityMap['LOW'] || 0,
       },
       incidentsByStatus: {
-        new: incidentsByStatus[0],
-        inProgress: incidentsByStatus[1],
-        onHold: incidentsByStatus[2],
-        resolved: incidentsByStatus[3],
-        closed: incidentsByStatus[4],
+        new: statusMap['NEW'] || 0,
+        inProgress: statusMap['IN_PROGRESS'] || 0,
+        onHold: statusMap['ON_HOLD'] || 0,
+        resolved: statusMap['RESOLVED'] || 0,
+        closed: statusMap['CLOSED'] || 0,
       },
     },
     recentIncidents,
     recentRequests,
   };
+
+  dashboardCache = { data: result, expiry: Date.now() + CACHE_TTL_MS };
+  return result;
 }
