@@ -22,15 +22,6 @@ export function Layout() {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
-  }
-
-  const initials = user
-    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || user.email[0].toUpperCase()
-    : '?';
-
   // Filter out admin-only items + their orphaned section headers
   const visibleItems = NAV_ITEMS.filter((item, i, arr) => {
     if ('adminOnly' in item && item.adminOnly && !isAdmin) return false;
