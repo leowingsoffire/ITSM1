@@ -4,6 +4,8 @@ import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/Pagination';
 import { useConfirm } from '../components/ConfirmDialog';
+import { SkeletonTable } from '../components/Skeleton';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface ServiceRequest {
   id: string;
@@ -31,6 +33,8 @@ export function ServiceRequestsPage() {
   const [filterPriority, setFilterPriority] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<ServiceRequest | null>(null);
 
@@ -40,14 +44,14 @@ export function ServiceRequestsPage() {
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
     params.page = String(page);
-    params.limit = '20';
+    params.limit = String(limit);
     api.get('/service-requests', { params })
-      .then(({ data }) => { setItems(data.data); setTotalPages(data.pagination?.totalPages || 1); })
+      .then(({ data }) => { setItems(data.data); setTotalPages(data.pagination?.totalPages || 1); setTotal(data.pagination?.total || 0); })
       .catch(() => { setItems([]); toast('error', 'Failed to load service requests'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, filterPriority, page]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, filterPriority, page, limit]);
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterPriority]);
 
   return (
@@ -70,11 +74,12 @@ export function ServiceRequestsPage() {
           <option value="">All Priorities</option>
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        <button className="btn btn-outline btn-export" onClick={() => exportToCsv('service-requests', ['Number','Title','Priority','Status','Requester','Assigned To','Created'], items.map(sr => [sr.number, sr.title, sr.priority, sr.status, sr.requester ? `${sr.requester.firstName} ${sr.requester.lastName}` : '', sr.assignedTo ? `${sr.assignedTo.firstName} ${sr.assignedTo.lastName}` : '', new Date(sr.createdAt).toLocaleDateString()]))}>Export CSV</button>
       </div>
 
       <div className="card">
         {loading ? (
-          <div className="loading-spinner">Loading...</div>
+          <SkeletonTable rows={6} cols={7} />
         ) : items.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">✦</div>
@@ -109,7 +114,7 @@ export function ServiceRequestsPage() {
                 ))}
               </tbody>
             </table>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={setPage} onLimitChange={setLimit} />
           </div>
         )}
       </div>

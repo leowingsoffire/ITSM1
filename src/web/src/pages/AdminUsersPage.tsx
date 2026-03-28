@@ -4,6 +4,8 @@ import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/Pagination';
 import { useConfirm } from '../components/ConfirmDialog';
+import { SkeletonTable } from '../components/Skeleton';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface User {
   id: string;
@@ -29,20 +31,22 @@ export function AdminUsersPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(20);
 
   function fetchData() {
     const params: Record<string, string> = {};
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterRole) params.role = filterRole;
     params.page = String(page);
-    params.limit = '20';
+    params.limit = String(limit);
     api.get('/admin/users', { params })
-      .then(({ data }) => { setUsers(data.data); setTotalPages(data.pagination?.totalPages || 1); })
+      .then(({ data }) => { setUsers(data.data); setTotalPages(data.pagination?.totalPages || 1); setTotal(data.pagination?.total || 0); })
       .catch(() => { setUsers([]); toast('error', 'Failed to load users'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterRole, page]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterRole, page, limit]);
   useEffect(() => { setPage(1); }, [debouncedSearch, filterRole]);
 
   async function toggleActive(user: User) {
@@ -85,11 +89,12 @@ export function AdminUsersPage() {
           <option value="">All Roles</option>
           {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
         </select>
+        <button className="btn btn-outline btn-export" onClick={() => exportToCsv('users', ['Name','Email','Role','Team','Status','Joined'], users.map(u => [`${u.firstName} ${u.lastName}`, u.email, u.role, u.team?.name || '', u.isActive ? 'Active' : 'Inactive', new Date(u.createdAt).toLocaleDateString()]))}>Export CSV</button>
       </div>
 
       <div className="card">
         {loading ? (
-          <div className="loading-spinner">Loading...</div>
+          <SkeletonTable rows={6} cols={7} />
         ) : (
           <div className="table-container">
             <table className="data-table">
@@ -139,7 +144,7 @@ export function AdminUsersPage() {
                 ))}
               </tbody>
             </table>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={setPage} onLimitChange={setLimit} />
           </div>
         )}
       </div>

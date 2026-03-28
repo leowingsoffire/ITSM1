@@ -4,6 +4,8 @@ import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/Pagination';
 import { useConfirm } from '../components/ConfirmDialog';
+import { SkeletonTable } from '../components/Skeleton';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface Asset {
   id: string;
@@ -36,6 +38,8 @@ export function AssetsPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Asset | null>(null);
 
@@ -45,14 +49,14 @@ export function AssetsPage() {
     if (filterType) params.type = filterType;
     if (filterStatus) params.status = filterStatus;
     params.page = String(page);
-    params.limit = '20';
+    params.limit = String(limit);
     api.get('/assets', { params })
-      .then(({ data }) => { setAssets(data.data); setTotalPages(data.pagination?.totalPages || 1); })
+      .then(({ data }) => { setAssets(data.data); setTotalPages(data.pagination?.totalPages || 1); setTotal(data.pagination?.total || 0); })
       .catch(() => { setAssets([]); toast('error', 'Failed to load assets'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterType, filterStatus, page]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterType, filterStatus, page, limit]);
   useEffect(() => { setPage(1); }, [debouncedSearch, filterType, filterStatus]);
 
   return (
@@ -75,11 +79,12 @@ export function AssetsPage() {
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <button className="btn btn-outline btn-export" onClick={() => exportToCsv('assets', ['Asset Tag','Name','Type','Status','Manufacturer','Assigned To','Location'], assets.map(a => [a.assetTag, a.name, a.type, a.status, a.manufacturer || '', a.assignedTo ? `${a.assignedTo.firstName} ${a.assignedTo.lastName}` : '', a.location || '']))}>Export CSV</button>
       </div>
 
       <div className="card">
         {loading ? (
-          <div className="loading-spinner">Loading...</div>
+          <SkeletonTable rows={6} cols={7} />
         ) : assets.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">◎</div>
@@ -114,7 +119,7 @@ export function AssetsPage() {
                 ))}
               </tbody>
             </table>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={setPage} onLimitChange={setLimit} />
           </div>
         )}
       </div>

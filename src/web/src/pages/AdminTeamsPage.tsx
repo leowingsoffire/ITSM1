@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
 import { useToast } from '../components/Toast';
+import { SkeletonCards } from '../components/Skeleton';
 
 interface Team {
   id: string;
@@ -38,7 +39,7 @@ export function AdminTeamsPage() {
       </div>
 
       {loading ? (
-        <div className="loading-spinner">Loading...</div>
+        <SkeletonCards count={4} />
       ) : teams.length === 0 ? (
         <div className="card">
           <div className="empty-state">

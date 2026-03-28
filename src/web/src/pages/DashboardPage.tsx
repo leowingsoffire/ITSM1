@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
+import { SkeletonStats } from '../components/Skeleton';
 
 interface DashboardData {
   summary: {
@@ -27,16 +28,38 @@ function formatDate(d: string) {
 export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const fetchData = useCallback((isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     api.get('/dashboard')
-      .then(({ data: res }) => setData(res.data))
+      .then(({ data: res }) => { setData(res.data); setLastUpdated(new Date()); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
 
-  if (loading) return <div className="loading-spinner">Loading dashboard…</div>;
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => fetchData(true), 30000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchData]);
+
+  if (loading) return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Real-time overview of your IT service operations</p>
+        </div>
+      </div>
+      <SkeletonStats count={6} />
+    </div>
+  );
   if (!data) return <div className="empty-state"><div className="empty-state-text">Unable to load dashboard data.</div></div>;
 
   const s = data.summary;
@@ -49,6 +72,16 @@ export function DashboardPage() {
         <div>
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Real-time overview of your IT service operations</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {autoRefresh && <div className="auto-refresh"><span className="auto-refresh-dot" />Auto-refresh</div>}
+          {lastUpdated && <span className="text-xs text-muted">Updated {lastUpdated.toLocaleTimeString()}</span>}
+          <button className={`refresh-btn${refreshing ? ' refreshing' : ''}`} onClick={() => fetchData(true)} disabled={refreshing}>
+            <span className="refresh-icon">↻</span> {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button className={`btn btn-sm ${autoRefresh ? 'btn-success' : 'btn-outline'}`} onClick={() => setAutoRefresh(!autoRefresh)} data-tooltip="Auto-refresh every 30s">
+            {autoRefresh ? '● Live' : '○ Live'}
+          </button>
         </div>
       </div>
 

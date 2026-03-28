@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/Pagination';
+import { SkeletonTable } from '../components/Skeleton';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface Incident {
   id: string;
@@ -38,6 +40,8 @@ export function IncidentsPage() {
   const [filterPriority, setFilterPriority] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Incident | null>(null);
   const [showEdit, setShowEdit] = useState<Incident | null>(null);
@@ -48,15 +52,15 @@ export function IncidentsPage() {
     if (filterStatus) params.status = filterStatus;
     if (filterPriority) params.priority = filterPriority;
     params.page = String(page);
-    params.limit = '20';
+    params.limit = String(limit);
     api.get('/incidents', { params })
-      .then(({ data }) => { setIncidents(data.data); setTotalPages(data.pagination?.totalPages || 1); })
+      .then(({ data }) => { setIncidents(data.data); setTotalPages(data.pagination?.totalPages || 1); setTotal(data.pagination?.total || 0); })
       .catch(() => { setIncidents([]); toast('error', 'Failed to load incidents'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchIncidents(); }, [debouncedSearch, filterStatus, filterPriority, page]);
-  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterPriority]);
+  useEffect(() => { fetchIncidents(); }, [debouncedSearch, filterStatus, filterPriority, page, limit]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus, filterPriority, limit]);
 
   return (
     <div>
@@ -78,11 +82,16 @@ export function IncidentsPage() {
           <option value="">All Priorities</option>
           {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        {incidents.length > 0 && (
+          <button className="btn-export" onClick={() => exportToCsv('incidents', ['Number', 'Title', 'Priority', 'Status', 'Assigned To', 'SLA', 'Created'], incidents.map(i => [i.number, i.title, i.priority, i.status, i.assignedTo ? `${i.assignedTo.firstName} ${i.assignedTo.lastName}` : '', i.slaBreached ? 'Breached' : 'OK', new Date(i.createdAt).toLocaleDateString()]))}>
+            ↓ Export CSV
+          </button>
+        )}
       </div>
 
       <div className="card">
         {loading ? (
-          <div className="loading-spinner">Loading incidents...</div>
+          <SkeletonTable rows={6} cols={7} />
         ) : incidents.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">⚡</div>
@@ -117,7 +126,7 @@ export function IncidentsPage() {
                 ))}
               </tbody>
             </table>
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={setPage} onLimitChange={setLimit} />
           </div>
         )}
       </div>

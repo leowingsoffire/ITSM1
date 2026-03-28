@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
 import { ConfirmProvider } from './components/ConfirmDialog';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
 
@@ -13,6 +14,7 @@ const AssetsPage = lazy(() => import('./pages/AssetsPage').then(m => ({ default:
 const KnowledgePage = lazy(() => import('./pages/KnowledgePage').then(m => ({ default: m.KnowledgePage })));
 const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
 const AdminTeamsPage = lazy(() => import('./pages/AdminTeamsPage').then(m => ({ default: m.AdminTeamsPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(m => ({ default: m.ProfilePage })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -37,6 +39,8 @@ function NotFoundPage() {
   );
 }
 
+const PageFallback = () => <div className="loading-spinner">Loading...</div>;
+
 function AppRoutes() {
   return (
     <Routes>
@@ -49,13 +53,14 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><DashboardPage /></Suspense>} />
-        <Route path="incidents" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><IncidentsPage /></Suspense>} />
-        <Route path="service-requests" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><ServiceRequestsPage /></Suspense>} />
-        <Route path="assets" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><AssetsPage /></Suspense>} />
-        <Route path="knowledge" element={<Suspense fallback={<div className="loading-spinner">Loading...</div>}><KnowledgePage /></Suspense>} />
-        <Route path="admin/users" element={<AdminRoute><Suspense fallback={<div className="loading-spinner">Loading...</div>}><AdminUsersPage /></Suspense></AdminRoute>} />
-        <Route path="admin/teams" element={<AdminRoute><Suspense fallback={<div className="loading-spinner">Loading...</div>}><AdminTeamsPage /></Suspense></AdminRoute>} />
+        <Route index element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+        <Route path="incidents" element={<Suspense fallback={<PageFallback />}><IncidentsPage /></Suspense>} />
+        <Route path="service-requests" element={<Suspense fallback={<PageFallback />}><ServiceRequestsPage /></Suspense>} />
+        <Route path="assets" element={<Suspense fallback={<PageFallback />}><AssetsPage /></Suspense>} />
+        <Route path="knowledge" element={<Suspense fallback={<PageFallback />}><KnowledgePage /></Suspense>} />
+        <Route path="profile" element={<Suspense fallback={<PageFallback />}><ProfilePage /></Suspense>} />
+        <Route path="admin/users" element={<AdminRoute><Suspense fallback={<PageFallback />}><AdminUsersPage /></Suspense></AdminRoute>} />
+        <Route path="admin/teams" element={<AdminRoute><Suspense fallback={<PageFallback />}><AdminTeamsPage /></Suspense></AdminRoute>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
@@ -65,13 +70,15 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ToastProvider>
-          <ConfirmProvider>
-            <AppRoutes />
-          </ConfirmProvider>
-        </ToastProvider>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <AppRoutes />
+            </ConfirmProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { useToast } from '../components/Toast';
 import { useDebounce } from '../hooks/useDebounce';
 import { Pagination } from '../components/Pagination';
+import { SkeletonCards } from '../components/Skeleton';
+import { exportToCsv } from '../utils/exportCsv';
 
 interface Article {
   id: string;
@@ -28,6 +30,8 @@ export function KnowledgePage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<Article | null>(null);
   const [showEdit, setShowEdit] = useState<Article | null>(null);
@@ -37,14 +41,14 @@ export function KnowledgePage() {
     if (debouncedSearch) params.search = debouncedSearch;
     if (filterStatus) params.status = filterStatus;
     params.page = String(page);
-    params.limit = '20';
+    params.limit = String(limit);
     api.get('/knowledge', { params })
-      .then(({ data }) => { setArticles(data.data); setTotalPages(data.pagination?.totalPages || 1); })
+      .then(({ data }) => { setArticles(data.data); setTotalPages(data.pagination?.totalPages || 1); setTotal(data.pagination?.total || 0); })
       .catch(() => { setArticles([]); toast('error', 'Failed to load articles'); })
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, page]);
+  useEffect(() => { fetchData(); }, [debouncedSearch, filterStatus, page, limit]);
   useEffect(() => { setPage(1); }, [debouncedSearch, filterStatus]);
 
   return (
@@ -63,10 +67,11 @@ export function KnowledgePage() {
           <option value="">All Statuses</option>
           {KB_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <button className="btn btn-outline btn-export" onClick={() => exportToCsv('knowledge-articles', ['Title','Status','Category','Views','Author','Created'], articles.map(a => [a.title, a.status, a.category || '', String(a.viewCount), a.author ? `${a.author.firstName} ${a.author.lastName}` : '', new Date(a.createdAt).toLocaleDateString()]))}>Export CSV</button>
       </div>
 
       {loading ? (
-        <div className="loading-spinner">Loading...</div>
+        <SkeletonCards count={6} />
       ) : articles.length === 0 ? (
         <div className="card">
           <div className="empty-state">
@@ -100,7 +105,7 @@ export function KnowledgePage() {
       )}
 
       {!loading && articles.length > 0 && (
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={setPage} onLimitChange={setLimit} />
       )}
 
       {showCreate && <ArticleFormModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchData(); }} />}

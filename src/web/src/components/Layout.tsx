@@ -1,5 +1,6 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../hooks/useTheme';
 
 type NavItem = { section: string } | { to: string; icon: string; label: string; adminOnly?: boolean };
 
@@ -15,14 +16,28 @@ const NAV_ITEMS: NavItem[] = [
   { section: 'Administration' },
   { to: '/admin/users', icon: '◉', label: 'Users', adminOnly: true },
   { to: '/admin/teams', icon: '⬡', label: 'Teams', adminOnly: true },
+  { section: 'Account' },
+  { to: '/profile', icon: '◑', label: 'My Profile' },
 ];
+
+const ROUTE_LABELS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/incidents': 'Incidents',
+  '/service-requests': 'Service Requests',
+  '/assets': 'Assets / CMDB',
+  '/knowledge': 'Knowledge Base',
+  '/admin/users': 'User Management',
+  '/admin/teams': 'Team Management',
+  '/profile': 'My Profile',
+};
 
 export function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  // Filter out admin-only items + their orphaned section headers
   const visibleItems = NAV_ITEMS.filter((item, i, arr) => {
     if ('adminOnly' in item && item.adminOnly && !isAdmin) return false;
     if ('section' in item && !('to' in item)) {
@@ -42,6 +57,9 @@ export function Layout() {
   const initials = user
     ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || user.email[0].toUpperCase()
     : '?';
+
+  const currentLabel = ROUTE_LABELS[location.pathname] || 'Page';
+  const isHome = location.pathname === '/';
 
   return (
     <div className="app-layout">
@@ -88,7 +106,32 @@ export function Layout() {
         </div>
       </nav>
       <main className="main-content">
-        <Outlet />
+        <header className="top-header">
+          <div className="top-header-left">
+            <nav className="breadcrumbs">
+              <a className="breadcrumb-item" href="#" onClick={e => { e.preventDefault(); navigate('/'); }}>Home</a>
+              {!isHome && (
+                <>
+                  <span className="breadcrumb-sep">›</span>
+                  <span className="breadcrumb-item active">{currentLabel}</span>
+                </>
+              )}
+            </nav>
+          </div>
+          <div className="top-header-right">
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              data-tooltip={theme === 'light' ? 'Dark mode' : 'Light mode'}
+              aria-label="Toggle theme"
+            >
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+          </div>
+        </header>
+        <div className="main-content-body">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
