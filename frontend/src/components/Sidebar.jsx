@@ -29,7 +29,7 @@ const bottomMenu = [
   { icon: Settings, label: 'Settings', to: '/settings' },
 ]
 
-function SidebarLink({ item, compact }) {
+function SidebarLink({ item }) {
   return (
     <NavLink
       to={item.to}
@@ -42,7 +42,7 @@ function SidebarLink({ item, compact }) {
       }
     >
       <item.icon size={18} />
-      {!compact && <span>{item.label}</span>}
+      <span>{item.label}</span>
     </NavLink>
   )
 }

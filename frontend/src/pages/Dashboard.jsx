@@ -15,7 +15,7 @@ export default function Dashboard() {
           <p className="text-xs text-dark-muted mb-1">Dashboard / Overview</p>
           <h1 className="text-3xl font-bold text-white">Hello Thomas,</h1>
           <p className="text-sm text-purple-400 mt-1">
-            <a href="#" className="underline">Click here</a> to setup your double authentication.
+            <a href="#" className="underline">Click here</a> to set up your double authentication.
           </p>
         </div>
 
