@@ -1,3 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #0f0d1b;
+  color: #e0dce8;
+  margin: 0;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1727; }
+::-webkit-scrollbar-thumb { background: #2a2740; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3650; }

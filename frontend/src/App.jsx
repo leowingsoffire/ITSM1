@@ -1,28 +1,41 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Clients from './pages/Clients'
 
 function App() {
   return (
     <BrowserRouter>
-      <nav className="bg-red-700 text-white px-6 py-3 flex gap-6">
-        <span className="font-bold text-lg mr-4">ThidaAI</span>
-        <NavLink to="/" end className={({ isActive }) => isActive ? 'underline' : ''}>Dashboard</NavLink>
-        <NavLink to="/clients" className={({ isActive }) => isActive ? 'underline' : ''}>Clients</NavLink>
-        <NavLink to="/proposals" className={({ isActive }) => isActive ? 'underline' : ''}>Proposals</NavLink>
-        <NavLink to="/mdrt" className={({ isActive }) => isActive ? 'underline' : ''}>MDRT</NavLink>
-        <NavLink to="/planning" className={({ isActive }) => isActive ? 'underline' : ''}>Planning</NavLink>
-      </nav>
-      <main className="p-6">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/clients" element={<Clients />} />
-          <Route path="/proposals" element={<div><h1 className="text-2xl font-bold">Proposals</h1><p className="mt-2 text-gray-500">Coming soon</p></div>} />
-          <Route path="/mdrt" element={<div><h1 className="text-2xl font-bold">MDRT Progress</h1><p className="mt-2 text-gray-500">Coming soon</p></div>} />
-          <Route path="/planning" element={<div><h1 className="text-2xl font-bold">Financial Planning</h1><p className="mt-2 text-gray-500">Coming soon</p></div>} />
-        </Routes>
-      </main>
+      <div className="flex min-h-screen bg-dark-bg">
+        <Sidebar />
+        <main className="ml-60 flex-1 p-8 overflow-auto">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/clients" element={<Clients />} />
+            <Route path="/proposals" element={<Placeholder title="Proposals" />} />
+            <Route path="/mdrt" element={<Placeholder title="MDRT Progress" />} />
+            <Route path="/planning" element={<Placeholder title="Financial Planning" />} />
+            <Route path="/applications" element={<Placeholder title="Applications" />} />
+            <Route path="/calendar" element={<Placeholder title="Calendar" />} />
+            <Route path="/reports" element={<Placeholder title="Monthly Reports" />} />
+            <Route path="/docs" element={<Placeholder title="DS Documentation" />} />
+            <Route path="/tests" element={<Placeholder title="2023 Test Reports" />} />
+            <Route path="/add" element={<Placeholder title="Add Function" />} />
+            <Route path="/archive" element={<Placeholder title="Archive" />} />
+            <Route path="/settings" element={<Placeholder title="Settings" />} />
+          </Routes>
+        </main>
+      </div>
     </BrowserRouter>
+  )
+}
+
+function Placeholder({ title }) {
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-white">{title}</h1>
+      <p className="mt-2 text-dark-muted">Coming soon</p>
+    </div>
   )
 }
 
