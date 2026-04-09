@@ -9,6 +9,7 @@ import {
   FileText,
   FileCode2,
   FolderOpen,
+  Layers,
 } from 'lucide-react'
 
 const favourites = [
@@ -34,47 +35,57 @@ function SidebarLink({ item }) {
     <NavLink
       to={item.to}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors ${
+        `group relative flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all duration-200 ${
           isActive
-            ? 'bg-dark-accent/20 text-white font-medium'
-            : 'text-dark-muted hover:text-white hover:bg-dark-hover'
+            ? 'bg-dark-accent/15 text-white font-medium shadow-glow-sm'
+            : 'text-dark-muted hover:text-white hover:bg-dark-hover/60'
         }`
       }
     >
-      <item.icon size={18} />
-      <span>{item.label}</span>
+      {({ isActive }) => (
+        <>
+          {/* Active indicator bar */}
+          {isActive && (
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-dark-accent rounded-r-full" />
+          )}
+          <item.icon size={18} className={`transition-colors duration-200 ${isActive ? 'text-dark-accent-light' : 'group-hover:text-white'}`} />
+          <span>{item.label}</span>
+        </>
+      )}
     </NavLink>
   )
 }
 
 export default function Sidebar() {
   return (
-    <aside className="fixed top-0 left-0 h-screen w-60 bg-dark-sidebar border-r border-dark-border flex flex-col z-30">
+    <aside className="fixed top-0 left-0 h-screen w-60 bg-dark-sidebar/95 backdrop-blur-sm border-r border-dark-border/50 flex flex-col z-30">
       {/* Logo */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 via-indigo-500 to-purple-700 flex items-center justify-center shadow-glow animate-glow-pulse">
+          <Layers size={20} className="text-white" />
+        </div>
+        <div className="w-8 h-8 rounded-lg border border-dark-border/60 flex items-center justify-center ml-auto">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b85a0" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 3v18" />
           </svg>
         </div>
       </div>
-      <div className="px-5 pb-4 text-xs text-dark-muted">v.0.04</div>
+      <div className="px-5 pb-4 text-[10px] text-dark-muted/60 tracking-wider">v.0.04</div>
 
       {/* Favourites */}
-      <div className="px-4 flex-1 overflow-y-auto">
-        <p className="text-xs text-dark-muted font-medium mb-2 px-1">Favourites</p>
+      <div className="px-3 flex-1 overflow-y-auto">
+        <p className="text-[10px] uppercase tracking-widest text-dark-muted/60 font-semibold mb-2 px-2">Favourites</p>
         <div className="space-y-0.5 mb-4">
           {favourites.map((item) => (
             <SidebarLink key={item.to} item={item} />
           ))}
         </div>
 
-        <div className="border-t border-dark-border my-4" />
+        <div className="border-t border-dark-border/40 mx-2 my-4" />
 
         {/* Main menu */}
-        <p className="text-xs text-dark-muted font-medium mb-2 px-1">Main menu</p>
+        <p className="text-[10px] uppercase tracking-widest text-dark-muted/60 font-semibold mb-2 px-2">Main menu</p>
         <div className="space-y-0.5 mb-4">
           {mainMenu.map((item) => (
             <SidebarLink key={item.to} item={item} />
@@ -83,7 +94,7 @@ export default function Sidebar() {
       </div>
 
       {/* Bottom */}
-      <div className="px-4 pb-5 space-y-0.5 border-t border-dark-border pt-3">
+      <div className="px-3 pb-5 space-y-0.5 border-t border-dark-border/40 pt-3">
         {bottomMenu.map((item) => (
           <SidebarLink key={item.to} item={item} />
         ))}
