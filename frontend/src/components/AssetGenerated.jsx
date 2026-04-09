@@ -8,13 +8,16 @@ const data = [
   { label: 'Oct', v: 900 },
 ]
 
+/** Multiplier to convert chart units to display dollar values (e.g. 900 units → ~$220,342.76) */
+const UNIT_TO_DOLLAR = 245.36
+
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-dark-card/95 backdrop-blur-sm border border-dark-border/60 rounded-lg px-3 py-2 shadow-card">
       <p className="text-[10px] text-dark-muted mb-0.5">{label}</p>
       <div className="flex items-baseline gap-2">
-        <span className="text-sm font-bold text-white">{(payload[0].value * 245.36).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <span className="text-sm font-bold text-white">{(payload[0].value * UNIT_TO_DOLLAR).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         <span className="text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded">+3.4%</span>
       </div>
     </div>
