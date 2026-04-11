@@ -23,11 +23,18 @@ model User {
   teamId String? @map("team_id")
   team   Team?   @relation(fields: [teamId], references: [id])
 
-  assignedIncidents Incident[] @relation("AssignedAgent")
-  createdIncidents  Incident[] @relation("CreatedBy")
-  serviceRequests   ServiceRequest[]
-  comments          Comment[]
-  knowledgeArticles KnowledgeArticle[]
+  assignedIncidents  Incident[]       @relation("AssignedAgent")
+  createdIncidents   Incident[]       @relation("CreatedBy")
+  serviceRequests    ServiceRequest[]
+  comments           Comment[]
+  knowledgeArticles  KnowledgeArticle[]
+  assignedProblems   Problem[]        @relation("ProblemAssigned")
+  createdProblems    Problem[]        @relation("ProblemCreatedBy")
+  requestedChanges   ChangeRequest[]  @relation("ChangeRequester")
+  assignedChanges    ChangeRequest[]  @relation("ChangeAssigned")
+  approvals          Approval[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
 
   @@map("users")
 }
@@ -47,6 +54,8 @@ model Team {
 
   members   User[]
   incidents Incident[]
+  problems  Problem[]
+  changes   ChangeRequest[]
 
   @@map("teams")
 }
@@ -82,6 +91,12 @@ model Incident {
   relatedAssetId String? @map("related_asset_id")
   relatedAsset   Asset?  @relation(fields: [relatedAssetId], references: [id])
 
+  problemId String? @map("problem_id")
+  problem   Problem? @relation(fields: [problemId], references: [id])
+
+  changeRequestId String? @map("change_request_id")
+  changeRequest   ChangeRequest? @relation(fields: [changeRequestId], references: [id])
+
   comments Comment[]
 
   @@index([status])
@@ -92,6 +107,8 @@ model Incident {
   @@index([createdById])
   @@index([assignedTeamId])
   @@index([slaBreached])
+  @@index([problemId])
+  @@index([changeRequestId])
   @@map("incidents")
 }
 
@@ -244,9 +261,15 @@ model Comment {
   incident         Incident?       @relation(fields: [incidentId], references: [id])
   serviceRequestId String?         @map("service_request_id")
   serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  changeRequestId  String?         @map("change_request_id")
+  changeRequest    ChangeRequest?  @relation(fields: [changeRequestId], references: [id])
+  problemId        String?         @map("problem_id")
+  problem          Problem?        @relation(fields: [problemId], references: [id])
 
   @@index([incidentId])
   @@index([serviceRequestId])
+  @@index([changeRequestId])
+  @@index([problemId])
   @@map("comments")
 }
 
@@ -264,4 +287,189 @@ model SlaPolicy {
 
   @@index([priority])
   @@map("sla_policies")
+}
+
+// ─── Change Management (ITIL) ────────────────────────────────
+
+model ChangeRequest {
+  id              String             @id @default(uuid())
+  number          String             @unique
+  title           String
+  description     String
+  type            ChangeType         @default(NORMAL)
+  status          ChangeStatus       @default(NEW)
+  priority        Priority           @default(MEDIUM)
+  risk            ChangeRisk         @default(MEDIUM)
+  impact          Impact             @default(MEDIUM)
+  category        String?
+  reason          String?
+  implementationPlan String?         @map("implementation_plan")
+  backoutPlan     String?            @map("backout_plan")
+  testPlan        String?            @map("test_plan")
+  scheduledStart  DateTime?          @map("scheduled_start")
+  scheduledEnd    DateTime?          @map("scheduled_end")
+  actualStart     DateTime?          @map("actual_start")
+  actualEnd       DateTime?          @map("actual_end")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  closedAt        DateTime?          @map("closed_at")
+
+  requesterId     String             @map("requester_id")
+  requester       User               @relation("ChangeRequester", fields: [requesterId], references: [id])
+
+  assignedToId    String?            @map("assigned_to_id")
+  assignedTo      User?              @relation("ChangeAssigned", fields: [assignedToId], references: [id])
+
+  assignedTeamId  String?            @map("assigned_team_id")
+  assignedTeam    Team?              @relation(fields: [assignedTeamId], references: [id])
+
+  incidents       Incident[]
+  approvals       Approval[]
+  comments        Comment[]
+
+  @@index([status])
+  @@index([type])
+  @@index([priority])
+  @@index([requesterId])
+  @@index([assignedToId])
+  @@index([scheduledStart])
+  @@map("change_requests")
+}
+
+enum ChangeType {
+  STANDARD
+  NORMAL
+  EMERGENCY
+}
+
+enum ChangeStatus {
+  NEW
+  PLANNING
+  AWAITING_APPROVAL
+  APPROVED
+  SCHEDULED
+  IMPLEMENTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ChangeRisk {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ─── Problem Management (ITIL) ──────────────────────────────
+
+model Problem {
+  id             String         @id @default(uuid())
+  number         String         @unique
+  title          String
+  description    String
+  status         ProblemStatus  @default(NEW)
+  priority       Priority       @default(MEDIUM)
+  impact         Impact         @default(MEDIUM)
+  category       String?
+  rootCause      String?        @map("root_cause")
+  workaround     String?
+  isKnownError   Boolean        @default(false) @map("is_known_error")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  resolvedAt     DateTime?      @map("resolved_at")
+  closedAt       DateTime?      @map("closed_at")
+
+  assignedToId   String?        @map("assigned_to_id")
+  assignedTo     User?          @relation("ProblemAssigned", fields: [assignedToId], references: [id])
+
+  assignedTeamId String?        @map("assigned_team_id")
+  assignedTeam   Team?          @relation(fields: [assignedTeamId], references: [id])
+
+  createdById    String         @map("created_by_id")
+  createdBy      User           @relation("ProblemCreatedBy", fields: [createdById], references: [id])
+
+  incidents      Incident[]
+  comments       Comment[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([isKnownError])
+  @@index([createdById])
+  @@map("problems")
+}
+
+enum ProblemStatus {
+  NEW
+  INVESTIGATING
+  ROOT_CAUSE_IDENTIFIED
+  KNOWN_ERROR
+  RESOLVED
+  CLOSED
+}
+
+// ─── Approvals ───────────────────────────────────────────────
+
+model Approval {
+  id              String          @id @default(uuid())
+  status          ApprovalStatus  @default(PENDING)
+  comments        String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  decidedAt       DateTime?       @map("decided_at")
+
+  approverId      String          @map("approver_id")
+  approver        User            @relation(fields: [approverId], references: [id])
+
+  changeRequestId String          @map("change_request_id")
+  changeRequest   ChangeRequest   @relation(fields: [changeRequestId], references: [id])
+
+  @@index([changeRequestId])
+  @@index([approverId])
+  @@map("approvals")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Audit Log ──────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  entity      String
+  entityId    String   @map("entity_id")
+  action      String
+  field       String?
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Notifications ──────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

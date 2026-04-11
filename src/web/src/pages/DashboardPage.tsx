@@ -12,6 +12,10 @@ interface DashboardData {
     slaBreaches: number;
     totalAssets: number;
     newIncidentsThisWeek: number;
+    openChanges: number;
+    openProblems: number;
+    knownErrors: number;
+    pendingApprovals: number;
   };
   charts: {
     incidentsByPriority: { critical: number; high: number; medium: number; low: number };
@@ -19,6 +23,8 @@ interface DashboardData {
   };
   recentIncidents: Array<{ id: string; number: string; title: string; status: string; priority: string; createdAt: string; assignedTo?: { firstName: string; lastName: string } | null }>;
   recentRequests: Array<{ id: string; number: string; title: string; status: string; priority: string; createdAt: string; requester?: { firstName: string; lastName: string } | null }>;
+  recentChanges: Array<{ id: string; number: string; title: string; status: string; type: string; createdAt: string }>;
+  recentProblems: Array<{ id: string; number: string; title: string; status: string; priority: string; isKnownError: boolean; createdAt: string }>;
 }
 
 function formatDate(d: string) {
@@ -130,6 +136,28 @@ export function DashboardPage() {
             <div className="stat-change">incidents</div>
           </div>
         </div>
+        <div className="stat-card stat-accent">
+          <div className="stat-icon accent">⟳</div>
+          <div className="stat-content">
+            <div className="stat-label">Open Changes</div>
+            <div className="stat-value">{s.openChanges}</div>
+          </div>
+        </div>
+        <div className="stat-card stat-warning">
+          <div className="stat-icon warning">⚠</div>
+          <div className="stat-content">
+            <div className="stat-label">Open Problems</div>
+            <div className="stat-value">{s.openProblems}</div>
+            <div className="stat-change">{s.knownErrors} known errors</div>
+          </div>
+        </div>
+        <div className="stat-card stat-info">
+          <div className="stat-icon info">✓</div>
+          <div className="stat-content">
+            <div className="stat-label">Pending Approvals</div>
+            <div className="stat-value">{s.pendingApprovals}</div>
+          </div>
+        </div>
       </div>
 
       <div className="grid-2 mb-lg">
@@ -226,6 +254,62 @@ export function DashboardPage() {
                 ))}
                 {data.recentRequests.length === 0 && (
                   <tr><td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No recent requests</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <div className="grid-2">
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Recent Changes</span>
+            <button className="btn btn-sm btn-outline" onClick={() => navigate('/changes')}>View All →</button>
+          </div>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr><th>Number</th><th>Title</th><th>Type</th><th>Status</th><th>Created</th></tr>
+              </thead>
+              <tbody>
+                {data.recentChanges?.map(c => (
+                  <tr key={c.id} className="clickable" onClick={() => navigate('/changes')}>
+                    <td className="td-primary">{c.number}</td>
+                    <td>{c.title}</td>
+                    <td><span className={`badge badge-${c.type.toLowerCase()}`}>{c.type}</span></td>
+                    <td><span className={`badge badge-${c.status.toLowerCase().replace(/_/g, '-')}`}>{c.status.replace(/_/g, ' ')}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(c.createdAt)}</td>
+                  </tr>
+                ))}
+                {(!data.recentChanges || data.recentChanges.length === 0) && (
+                  <tr><td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No recent changes</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Recent Problems</span>
+            <button className="btn btn-sm btn-outline" onClick={() => navigate('/problems')}>View All →</button>
+          </div>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr><th>Number</th><th>Title</th><th>Priority</th><th>Status</th><th>Created</th></tr>
+              </thead>
+              <tbody>
+                {data.recentProblems?.map(p => (
+                  <tr key={p.id} className="clickable" onClick={() => navigate('/problems')}>
+                    <td className="td-primary">{p.number}{p.isKnownError && <span className="badge badge-known-error" style={{ marginLeft: 4, fontSize: 9 }}>KE</span>}</td>
+                    <td>{p.title}</td>
+                    <td><span className={`badge badge-${p.priority.toLowerCase()}`}>{p.priority}</span></td>
+                    <td><span className={`badge badge-${p.status.toLowerCase().replace(/_/g, '-')}`}>{p.status.replace(/_/g, ' ')}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(p.createdAt)}</td>
+                  </tr>
+                ))}
+                {(!data.recentProblems || data.recentProblems.length === 0) && (
+                  <tr><td colSpan={5} className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No recent problems</td></tr>
                 )}
               </tbody>
             </table>

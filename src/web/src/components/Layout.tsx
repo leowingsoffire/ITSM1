@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
+import { NotificationBell } from './NotificationBell';
 
 type NavItem = { section: string } | { to: string; icon: string; label: string; adminOnly?: boolean };
 
@@ -10,12 +11,15 @@ const NAV_ITEMS: NavItem[] = [
   { section: 'Service Management' },
   { to: '/incidents', icon: '⚡', label: 'Incidents' },
   { to: '/service-requests', icon: '✦', label: 'Service Requests' },
+  { to: '/changes', icon: '⟳', label: 'Changes' },
+  { to: '/problems', icon: '⚠', label: 'Problems' },
   { section: 'Configuration' },
   { to: '/assets', icon: '◎', label: 'Assets / CMDB' },
   { to: '/knowledge', icon: '◈', label: 'Knowledge Base' },
   { section: 'Administration' },
   { to: '/admin/users', icon: '◉', label: 'Users', adminOnly: true },
   { to: '/admin/teams', icon: '⬡', label: 'Teams', adminOnly: true },
+  { to: '/admin/audit-log', icon: '⊙', label: 'Audit Log', adminOnly: true },
   { section: 'Account' },
   { to: '/profile', icon: '◑', label: 'My Profile' },
 ];
@@ -28,6 +32,9 @@ const ROUTE_LABELS: Record<string, string> = {
   '/knowledge': 'Knowledge Base',
   '/admin/users': 'User Management',
   '/admin/teams': 'Team Management',
+  '/admin/audit-log': 'Audit Log',
+  '/changes': 'Change Management',
+  '/problems': 'Problem Management',
   '/profile': 'My Profile',
 };
 
@@ -119,6 +126,7 @@ export function Layout() {
             </nav>
           </div>
           <div className="top-header-right">
+            <NotificationBell />
             <button
               className="theme-toggle"
               onClick={toggleTheme}

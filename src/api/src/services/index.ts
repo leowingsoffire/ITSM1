@@ -5,3 +5,7 @@ export * as serviceRequestService from './service-request.service';
 export * as assetService from './asset.service';
 export * as knowledgeService from './knowledge.service';
 export * as adminService from './admin.service';
+export * as changeService from './change.service';
+export * as problemService from './problem.service';
+export * as auditService from './audit.service';
+export * as notificationService from './notification.service';

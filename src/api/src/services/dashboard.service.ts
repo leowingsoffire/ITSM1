@@ -25,6 +25,12 @@ export async function getDashboardStats() {
     byStatus,
     recentIncidents,
     recentRequests,
+    openChanges,
+    openProblems,
+    knownErrors,
+    pendingApprovals,
+    recentChanges,
+    recentProblems,
   ] = await Promise.all([
     prisma.incident.count({
       where: { status: { in: ['NEW', 'IN_PROGRESS', 'ON_HOLD'] } },
@@ -70,6 +76,34 @@ export async function getDashboardStats() {
         requester: { select: { firstName: true, lastName: true } },
       },
     }),
+    prisma.changeRequest.count({
+      where: { status: { in: ['NEW', 'PLANNING', 'AWAITING_APPROVAL', 'APPROVED', 'SCHEDULED', 'IMPLEMENTING'] } },
+    }),
+    prisma.problem.count({
+      where: { status: { in: ['NEW', 'INVESTIGATING', 'ROOT_CAUSE_IDENTIFIED', 'KNOWN_ERROR'] } },
+    }),
+    prisma.problem.count({
+      where: { isKnownError: true, status: { not: 'CLOSED' } },
+    }),
+    prisma.changeRequest.count({
+      where: { status: 'AWAITING_APPROVAL' },
+    }),
+    prisma.changeRequest.findMany({
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, number: true, title: true, status: true, type: true, priority: true, createdAt: true,
+        requester: { select: { firstName: true, lastName: true } },
+      },
+    }),
+    prisma.problem.findMany({
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, number: true, title: true, status: true, priority: true, isKnownError: true, createdAt: true,
+        assignedTo: { select: { firstName: true, lastName: true } },
+      },
+    }),
   ]);
 
   const priorityMap = Object.fromEntries(byPriority.map(r => [r.priority, r._count]));
@@ -86,6 +120,10 @@ export async function getDashboardStats() {
       slaBreaches,
       totalAssets,
       newIncidentsThisWeek,
+      openChanges,
+      openProblems,
+      knownErrors,
+      pendingApprovals,
     },
     charts: {
       incidentsByPriority: {
@@ -104,6 +142,8 @@ export async function getDashboardStats() {
     },
     recentIncidents,
     recentRequests,
+    recentChanges,
+    recentProblems,
   };
 
   dashboardCache = { data: result, expiry: Date.now() + CACHE_TTL_MS };
