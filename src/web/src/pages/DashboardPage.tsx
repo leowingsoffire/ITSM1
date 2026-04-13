@@ -259,6 +259,8 @@ export function DashboardPage() {
             </table>
           </div>
         </div>
+      </div>
+
       <div className="grid-2">
         <div className="card">
           <div className="card-header">
