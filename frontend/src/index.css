@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: #0f0d1b;
+  color: #e0dce8;
+  margin: 0;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1727; }
+::-webkit-scrollbar-thumb { background: #2a2740; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3650; }
+
+/* Glass card effect */
+@layer components {
+  .glass-card {
+    background: linear-gradient(135deg, rgba(26, 23, 39, 0.9), rgba(26, 23, 39, 0.7));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(42, 39, 64, 0.6);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glass-card:hover {
+    border-color: rgba(124, 91, 245, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 20px rgba(124, 91, 245, 0.06);
+    transform: translateY(-1px);
+  }
+
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(124,91,245,0.4), rgba(124,91,245,0.05));
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+}
+
+/* SVG animation for donut arcs */
+@keyframes drawArc {
+  from { stroke-dashoffset: var(--arc-length); }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Subtle ambient glow behind cards */
+.ambient-glow {
+  position: relative;
+}
+
+.ambient-glow::after {
+  content: '';
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124,91,245,0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
