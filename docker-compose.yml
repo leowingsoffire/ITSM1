@@ -49,7 +49,7 @@ services:
     container_name: itsm1-web
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
       - api
 
