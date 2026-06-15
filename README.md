@@ -1,111 +1,97 @@
-# ITSM1
+# 🤖 ThidaAI Platform
 
-IT Service Management platform built with Node.js, React, and PostgreSQL.
+AI-powered insurance agent platform for AIA Myanmar — built with FastAPI, React, PostgreSQL, OpenAI, and Twilio.
 
-## Architecture
+> **Thida Soe** | thidasoe@aia.com.mm | +95 9 4318 1662 | AIA Myanmar | [www.aia.com.mm](https://www.aia.com.mm)
 
-| Component | Technology |
-|-----------|-----------|
-| Backend API | Node.js + Express + TypeScript |
-| Frontend | React + TypeScript (Vite) |
-| Database | PostgreSQL + Prisma ORM |
-| Auth | JWT + bcrypt |
-| Containers | Docker + docker-compose |
+## ✨ Features
 
-## Project Structure
+| Feature | Description |
+|---------|-------------|
+| 👥 Client Management | Store and manage client profiles |
+| 🧠 AI Needs Analysis | OpenAI-powered insurance needs analysis |
+| 📄 Proposal Generation | Auto-generate insurance proposals with PDF export |
+| 🏆 MDRT Progress Tracking | Track Million Dollar Round Table targets |
+| 🏖️ Retirement Planning | Retirement gap calculator |
+| 🎓 Education Planning | Education cost projector |
+| 💰 Tax Planning | Tax savings calculator |
+| 📱 WhatsApp Bot | Twilio-powered WhatsApp integration |
+
+## 🏗️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend API | Python 3.10+ · FastAPI · SQLAlchemy |
+| Frontend | React · Vite · Tailwind CSS · React Router |
+| Database | PostgreSQL 14+ |
+| AI | OpenAI API |
+| Messaging | Twilio (WhatsApp) |
+| PDF | fpdf2 |
+
+## 📁 Project Structure
 
 ```
-├── src/
-│   ├── api/          # Express REST API
-│   │   └── src/
-│   │       ├── config/       # Environment, logging
-│   │       ├── middleware/    # Auth, error handling, logging
-│   │       ├── models/       # Prisma client
-│   │       ├── routes/       # API routes
-│   │       ├── services/     # Business logic
-│   │       └── types/        # Zod schemas & TypeScript types
-│   └── web/          # React frontend (Vite)
-│       └── src/
-│           ├── api/          # Axios client
-│           ├── components/   # Shared components
-│           └── pages/        # Page components
-├── prisma/           # Database schema & migrations
-├── docker-compose.yml
-└── .github/workflows/  # CI/CD pipelines
+├── backend/                # FastAPI backend
+│   ├── main.py             # App entry point + CORS
+│   ├── requirements.txt    # Python dependencies
+│   ├── routers/            # API route handlers
+│   │   ├── clients.py      # Client management + AI analysis
+│   │   ├── proposals.py    # Proposal + PDF generation
+│   │   ├── mdrt.py         # MDRT progress tracking
+│   │   ├── planning.py     # Financial planning calculators
+│   │   └── whatsapp.py     # WhatsApp webhook
+│   └── models/
+│       ├── database.py     # SQLAlchemy connection
+│       └── schemas.py      # Pydantic models
+├── frontend/               # Vite + React frontend
+│   └── src/
+│       ├── App.jsx         # Router setup
+│       └── pages/          # Dashboard, Clients, Proposals, MDRT, Planning
+├── database/
+│   └── schema.sql          # PostgreSQL schema
+├── docs/
+│   └── SETUP.md            # Full setup guide
+└── .env.example            # Environment template
 ```
 
-## Getting Started
+## 🚀 Getting Started
 
-### Prerequisites
-- Node.js 20+
-- Docker & docker-compose (for PostgreSQL)
+See **[docs/SETUP.md](docs/SETUP.md)** for the full setup guide.
 
-### Quick Start (Docker)
+### Quick Start
+
 ```bash
-docker-compose up -d
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# 2. Database
+psql -U postgres -f database/schema.sql
+
+# 3. Backend
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+
+# 4. Frontend
+cd frontend
+npm install && npm run dev
 ```
-This starts PostgreSQL, the API server, and the web frontend.
 
-### Local Development
+- API: http://localhost:8000 · Docs: http://localhost:8000/docs
+- Frontend: http://localhost:5173
 
-1. **Start the database:**
-   ```bash
-   docker-compose up db -d
-   ```
-
-2. **Set up the API:**
-   ```bash
-   cd src/api
-   cp .env.example .env
-   npm install
-   npx prisma migrate dev
-   npm run dev
-   ```
-
-3. **Set up the frontend:**
-   ```bash
-   cd src/web
-   npm install
-   npm run dev
-   ```
-
-4. Open http://localhost:5173
-
-## API Endpoints
+## 📡 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/auth/register` | Register user |
-| POST | `/api/v1/auth/login` | Login (returns JWT) |
-| GET | `/api/v1/incidents` | List incidents |
-| GET | `/api/v1/incidents/:id` | Get incident |
-| POST | `/api/v1/incidents` | Create incident |
-| PATCH | `/api/v1/incidents/:id` | Update incident |
-
-## CI/CD
-
-This project uses GitHub Actions for CI/CD:
-
-- **CI** (`.github/workflows/ci.yml`): Runs on every push and PR to `main` — lint, test, build, security scan
-- **CD** (`.github/workflows/cd.yml`): Runs on version tags (`v*`) — builds and deploys release artifacts
-
-## Branching Strategy
-
-| Branch | Purpose |
-|--------|---------|
-| `main` | Production-ready, always deployable |
-| `feature/{ticket}-{desc}` | Short-lived feature branches |
-| `fix/{ticket}-{desc}` | Bug fixes |
-| `hotfix/{ticket}-{desc}` | Emergency production fixes |
-
-## Commit Convention
-
-Uses [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat(scope): add new feature
-fix(scope): fix a bug
-docs(scope): update documentation
-chore(scope): maintenance tasks
-```
+| GET | `/api/health` | Health check |
+| GET | `/api/clients` | List all clients |
+| POST | `/api/clients/analyze` | AI needs analysis |
+| POST | `/api/proposals/generate` | Generate proposal + PDF |
+| POST | `/api/mdrt/progress` | Calculate MDRT progress |
+| POST | `/api/planning/retirement` | Retirement gap calculator |
+| POST | `/api/planning/education` | Education cost projector |
+| POST | `/api/planning/tax` | Tax savings calculator |
+| POST | `/api/whatsapp/webhook` | WhatsApp webhook |
