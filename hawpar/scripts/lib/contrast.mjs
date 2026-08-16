@@ -83,7 +83,15 @@ function layoutSignature(page) {
 export async function measureTextContrast(page, options = {}) {
   const { minFontSize = 10, attempts = 3 } = options;
 
-  const freeze = await page.addStyleTag({ content: FREEZE_MOTION });
+  // The application ships a strict Content-Security-Policy, so `addStyleTag`
+  // (an inline <style> element) is refused. Constructed stylesheets are a CSSOM
+  // API and stay exempt, so motion can still be frozen before measuring.
+  await page.evaluate((css) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    sheet.__contrastFreeze = true;
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  }, FREEZE_MOTION);
   try {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       await waitForStableLayout(page);
@@ -100,7 +108,11 @@ export async function measureTextContrast(page, options = {}) {
     }
     return [];
   } finally {
-    await freeze.evaluate((node) => node.remove()).catch(() => {});
+    await page
+      .evaluate(() => {
+        document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => !sheet.__contrastFreeze);
+      })
+      .catch(() => {});
   }
 }
 

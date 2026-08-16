@@ -57,12 +57,16 @@ async function newSession(viewport) {
 
   const pageErrors = [];
   const consoleErrors = [];
+  const cspViolations = [];
   const badResponses = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const text = message.text();
     const origin = message.location()?.url ?? '';
+    // A CSP report means a declaration was dropped, so the UI silently rendered
+    // wrong rather than throwing. Track it by name so the cause is obvious.
+    if (/Content Security Policy/i.test(text)) cspViolations.push(`${text.slice(0, 120)} @ ${origin}`);
     // Only suppress the console echo of a request this suite deliberately made.
     if (IGNORED_REQUEST_PATTERNS.some((pattern) => pattern.test(origin))) return;
     if (IGNORED_CONSOLE_PATTERNS.some((pattern) => pattern.test(text))) return;
@@ -79,7 +83,7 @@ async function newSession(viewport) {
   await dismissOnboarding(page);
   await signIn(page);
 
-  return { context, page, pageErrors, consoleErrors, badResponses };
+  return { context, page, pageErrors, consoleErrors, cspViolations, badResponses };
 }
 
 /** Waits until the view has settled: no spinner and real content painted. */
@@ -725,6 +729,11 @@ try {
     desktop.consoleErrors.slice(0, 3).join(' | ')
   );
   ok(
+    'no content security policy violations during the desktop journey',
+    desktop.cspViolations.length === 0,
+    desktop.cspViolations.slice(0, 2).join(' | ')
+  );
+  ok(
     'no failed network requests during the desktop journey',
     desktop.badResponses.length === 0,
     desktop.badResponses.slice(0, 3).join(' | ')
@@ -806,6 +815,11 @@ for (const viewport of VIEWPORTS) {
       `${viewport.name}: no page errors`,
       session.pageErrors.length === 0,
       session.pageErrors.slice(0, 2).join(' | ')
+    );
+    ok(
+      `${viewport.name}: no content security policy violations`,
+      session.cspViolations.length === 0,
+      session.cspViolations.slice(0, 2).join(' | ')
     );
   } finally {
     await session.context.close();

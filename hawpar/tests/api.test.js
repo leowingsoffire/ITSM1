@@ -229,3 +229,41 @@ describe('large document handling', () => {
     assert.equal(record.cost.selectedModel, 'prebuilt-read');
   });
 });
+
+describe('browser security posture', () => {
+  test('should_serve_hardened_security_headers_on_the_app_shell', async () => {
+    const response = await fetch(baseUrl.replace(/\/api$/, '/'));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.equal(response.headers.get('cross-origin-opener-policy'), 'same-origin');
+    assert.match(response.headers.get('permissions-policy') ?? '', /camera=\(\)/);
+    // Express advertises its own presence by default; disclosing the stack
+    // hands an attacker free reconnaissance.
+    assert.equal(response.headers.get('x-powered-by'), null);
+  });
+
+  test('should_not_relax_the_content_security_policy_with_unsafe_directives', async () => {
+    const csp = (await fetch(baseUrl.replace(/\/api$/, '/'))).headers.get('content-security-policy') ?? '';
+    const directives = Object.fromEntries(
+      csp.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
+        const [name, ...values] = part.split(/\s+/);
+        return [name, values];
+      })
+    );
+    // The client ships no inline <style>, no style="" attribute and never calls
+    // setAttribute('style'), so nothing needs 'unsafe-inline'. Assert it stays
+    // that way: the relaxation is only ever re-added by accident.
+    for (const directive of ['default-src', 'script-src', 'style-src']) {
+      assert.ok(directives[directive], `${directive} must be declared`);
+      assert.ok(
+        !directives[directive].some((value) => /unsafe-inline|unsafe-eval/.test(value)),
+        `${directive} must not allow unsafe sources, received ${directives[directive].join(' ')}`
+      );
+    }
+    assert.deepEqual(directives['object-src'], ["'none'"]);
+    assert.deepEqual(directives['frame-ancestors'], ["'none'"]);
+    assert.deepEqual(directives['base-uri'], ["'self'"]);
+  });
+});

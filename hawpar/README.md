@@ -340,8 +340,13 @@ preview will serve records that predate them.
 
 ## Security & governance
 
-- HTTPS-only, HSTS, strict `Content-Security-Policy` (`script-src 'self'`), `X-Content-Type-Options`,
-  `Referrer-Policy`, `X-Frame-Options`
+- HTTPS-only, HSTS, strict `Content-Security-Policy` (`script-src 'self'`, `style-src 'self'` — no
+  `unsafe-inline` anywhere), `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`,
+  `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and no `X-Powered-By` stack disclosure.
+  The client keeps that policy honest by applying every dynamic style through CSSOM
+  (`style.setProperty`), which CSP exempts, rather than a `style` attribute, which it blocks —
+  see `el()`/`svgEl()` in `src/public/js/util.js`. `npm run e2e` fails on any CSP report, so a
+  dropped declaration surfaces as a test failure instead of a silently mis-rendered bar.
 - Defence-in-depth upload validation (extension, declared MIME type, magic bytes) and path-traversal-safe
   file names
 - Per-client rate limits, counted once per request over a rolling 60 s window: API 600/min

@@ -5,6 +5,42 @@
  */
 
 /**
+ * Applies styles through CSSOM rather than a style attribute.
+ *
+ * A strict Content-Security-Policy blocks `setAttribute('style', ...)`, while
+ * every CSSOM path stays exempt. Accepting the string form here means callers
+ * can keep writing `style: "width:40%"` without their declarations being
+ * silently dropped, and custom properties (`--bar-delay`) work too, which a
+ * plain `Object.assign` onto `node.style` cannot express.
+ */
+function applyStyle(node, value) {
+  if (typeof value === 'object') {
+    for (const [property, declaration] of Object.entries(value)) setStyle(node, property, declaration);
+    return;
+  }
+  for (const declaration of String(value).split(';')) {
+    const separator = declaration.indexOf(':');
+    if (separator === -1) continue;
+    setStyle(node, declaration.slice(0, separator), declaration.slice(separator + 1));
+  }
+}
+
+function setStyle(node, property, value) {
+  const name = String(property).trim();
+  let declaration = String(value).trim();
+  if (!name || !declaration) return;
+  let priority = '';
+  if (/!important$/i.test(declaration)) {
+    declaration = declaration.replace(/!important$/i, '').trim();
+    priority = 'important';
+  }
+  // setProperty only understands CSS property names, so camelCased keys from
+  // the object form have to go through the named CSSOM accessor instead.
+  if (/[A-Z]/.test(name)) node.style[name] = declaration;
+  else node.style.setProperty(name, declaration, priority);
+}
+
+/**
  * Creates an element.
  * @param {string} tag        Tag name, optionally with `.class` suffixes (e.g. "div.card.card--wide").
  * @param {object} [props]    Attributes, `class`, `text`, `html` (trusted only), `on` handlers, `dataset`.
@@ -21,7 +57,7 @@ export function el(tag, props = {}, children = []) {
     else if (key === 'text') node.textContent = String(value);
     else if (key === 'on') for (const [event, handler] of Object.entries(value)) node.addEventListener(event, handler);
     else if (key === 'dataset') for (const [dataKey, dataValue] of Object.entries(value)) node.dataset[dataKey] = dataValue;
-    else if (key === 'style' && typeof value === 'object') Object.assign(node.style, value);
+    else if (key === 'style') applyStyle(node, value);
     else if (key in node && key !== 'list') node[key] = value;
     else node.setAttribute(key, String(value));
   }
@@ -49,7 +85,8 @@ export function svgEl(tag, attributes = {}, children = []) {
   const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [key, value] of Object.entries(attributes)) {
     if (value === null || value === undefined) continue;
-    node.setAttribute(key, String(value));
+    if (key === 'style') applyStyle(node, value);
+    else node.setAttribute(key, String(value));
   }
   for (const child of Array.isArray(children) ? children : [children]) {
     if (child) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
