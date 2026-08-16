@@ -291,14 +291,34 @@ The Bicep template provisions:
 - Role assignments: `Cognitive Services User`, `Storage Blob Data Contributor`, `Key Vault Secrets User`,
   `Monitoring Metrics Publisher`
 
-Deploy the application:
+Deploy the application. Package only the runtime sources — bundling `node_modules` or the local `data/`
+directory produces a slow, oversized deployment and defeats the Oryx build:
 
 ```powershell
-Compress-Archive -Path * -DestinationPath dist.zip -Force
-az webapp deploy --resource-group rg-hawpar-docai --name <webAppName> --src-path dist.zip --type zip
+$stage = "$env:TEMP\vgc-deploy"
+Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $stage | Out-Null
+Copy-Item src, scripts, worker, package.json, package-lock.json, README.md -Destination $stage -Recurse
+Compress-Archive -Path "$stage\*" -DestinationPath "$env:TEMP\vgc-deploy.zip" -Force
+
+az webapp deploy --resource-group rg-hawpar-docai --name <webAppName> `
+  --src-path "$env:TEMP\vgc-deploy.zip" --type zip
 ```
 
-Verify with `https://<webAppName>.azurewebsites.net/api/health`.
+`SCM_DO_BUILD_DURING_DEPLOYMENT` is already set by the template, so App Service installs production
+dependencies during deployment. A large upload can outlast the CLI's polling window and report a 504 while the
+server-side build is still running — check `az webapp log deployment show` before retrying.
+
+Verify with `https://<webAppName>.azurewebsites.net/api/health`. `engine` reports `azure` once the
+`Cognitive Services User` role assignment has propagated; until then the platform degrades to the offline
+engine and records the reason on each document rather than failing the request.
+
+The whole browser suite can be pointed at the deployed site, which is the strongest end-to-end proof:
+
+```powershell
+$env:E2E_BASE_URL = "https://<webAppName>.azurewebsites.net"
+npm run e2e
+```
 
 ### Edge preview (Cloudflare Workers)
 
