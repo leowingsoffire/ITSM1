@@ -1,0 +1,439 @@
+/* ==========================================================================
+   PREMIUM MOTION DESIGN SYSTEM — "crystal glass resting on still water"
+   --------------------------------------------------------------------------
+   Loaded AFTER quantum.css. This layer owns every interaction: touch ripples,
+   liquid press, hover physics, magnetic attraction, icon micro-motion, card
+   float, feedback animations and transition choreography.
+
+   Three rules govern everything here:
+
+   1. ONLY `transform` and `opacity` are animated on interactive paths, so the
+      compositor does the work and no frame triggers layout.
+   2. The physics engine in js/motion.js composes ONE transform per element out
+      of custom properties (--qx/--qy/--qrx/--qry/--qs/--spin). Never declare a
+      competing `transform` for a `.q-phys` element.
+   3. `filter` is never applied to a glass surface. A `filter` on an ancestor
+      silently disables `backdrop-filter` on every descendant — brightness is
+      achieved with the sheen overlay instead.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. Composed physics transform
+   ========================================================================== */
+
+/*
+ * Doubled class (`.q-phys.q-phys`) lifts specificity to 0,2,0 so this matches
+ * the existing `:hover` transforms in quantum.css. Because motion.css loads
+ * last, the cascade resolves in our favour and the engine keeps sole ownership
+ * of `transform` while it is driving an element.
+ */
+.q-phys.q-phys {
+  transform:
+    perspective(900px)
+    translate3d(var(--qx, 0px), var(--qy, 0px), 0)
+    rotateX(var(--qrx, 0deg))
+    rotateY(var(--qry, 0deg))
+    rotate(var(--spin, 0deg))
+    scale(var(--qs, 1));
+  /* Promoted only while the engine holds the element, never globally. */
+  will-change: transform;
+}
+
+/* The copilot trigger rotates when open — folded into the shared var so the
+   engine and the open state cannot fight over `transform`. */
+.copilot-fab.is-open.q-phys { --spin: 135deg; }
+
+/* ==========================================================================
+   2. Effects layer — ripples and the cursor-tracking sheen
+   --------------------------------------------------------------------------
+   `.q-fx` is injected lazily as the first child of an interactive element and
+   sits at z-index -1. Inside a stacking context that paints it ABOVE the
+   element's own translucent background but BELOW all of its content — so
+   ripples appear to travel through the glass, under the text.
+   ========================================================================== */
+
+/* Every physics host must be a positioning context for its effects layer.
+   `.copilot-fab` is deliberately excluded — it is `position: fixed`, which is
+   already a positioning context, and relative would tear it out of the
+   viewport corner. */
+.btn, .card, .nav-item, .sample-card, .arch__node, .field-row, .tab,
+.copilot__tab, .copilot__task, .copilot__send, .copilot__mic, .copilot__close,
+.avatar { position: relative; }
+
+.q-phys { isolation: isolate; }   /* guarantees the stacking context */
+
+.q-fx {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: paint;
+}
+
+/* Glow that follows the cursor across the surface. */
+.q-sheen {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 340ms var(--ease-out);
+  background:
+    radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%),
+      rgba(255, 255, 255, 0.16),
+      rgba(122, 176, 255, 0.09) 42%,
+      rgba(232, 199, 126, 0.04) 62%,
+      transparent 74%);
+}
+.q-phys.is-hovered .q-sheen { opacity: 1; }
+
+/* Crystal water ripple. Expands from the exact pointer position, refracts the
+   glass beneath it, then dissolves. */
+.q-ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: scale(0);
+  opacity: 0;
+  background:
+    radial-gradient(circle,
+      rgba(255, 255, 255, 0.3) 0%,
+      rgba(190, 220, 255, 0.2) 32%,
+      rgba(122, 176, 255, 0.12) 52%,
+      rgba(232, 199, 126, 0.07) 68%,
+      transparent 76%);
+  backdrop-filter: blur(3px) brightness(1.1) saturate(1.25);
+  -webkit-backdrop-filter: blur(3px) brightness(1.1) saturate(1.25);
+  animation: q-ripple 620ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@keyframes q-ripple {
+  0%   { transform: scale(0);    opacity: 0; }
+  14%  { opacity: 0.85; }
+  55%  { opacity: 0.4; }
+  100% { transform: scale(1);    opacity: 0; }
+}
+
+/* Table rows cannot host a positioned overlay reliably, so they acknowledge a
+   click with a travelling tint instead. */
+@keyframes q-row-flash {
+  0%   { background-image: linear-gradient(90deg, rgba(122, 176, 255, 0.3), transparent 18%); }
+  100% { background-image: linear-gradient(90deg, rgba(122, 176, 255, 0), transparent 100%); }
+}
+tr.q-row-flash { animation: q-row-flash 620ms var(--ease-out) forwards; }
+
+/* ==========================================================================
+   3. Card float — different amplitude and cadence per card
+   --------------------------------------------------------------------------
+   Runs as a compositor-only CSS animation while the card is idle. The moment
+   the physics engine takes over (`.q-phys`) the animation is suppressed and
+   js/motion.js seeds the spring with the card's current offset, so the
+   handover is invisible.
+   ========================================================================== */
+
+.card:not(.q-phys) {
+  animation: q-float-a 9s var(--ease-glass) infinite;
+}
+.card:nth-child(2n):not(.q-phys) { animation: q-float-b 11.5s var(--ease-glass) -2.5s infinite; }
+.card:nth-child(3n):not(.q-phys) { animation: q-float-a 13s   var(--ease-glass) -5.5s infinite; }
+.card:nth-child(5n):not(.q-phys) { animation: q-float-b 10.5s var(--ease-glass) -7.5s infinite; }
+
+@keyframes q-float-a {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -3px, 0); }
+}
+@keyframes q-float-b {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -4px, 0); }
+}
+
+/* Hover: clearer glass, deeper shadow, gold rim. No `filter` — see header. */
+.card.is-hovered {
+  border-color: var(--crystal-border-strong);
+  box-shadow:
+    var(--shadow-lg),
+    var(--glow-blue),
+    inset 0 0 0 1px rgba(232, 199, 126, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+/* The gold corner brackets tighten on hover. Scoped away from `.kpi`, whose
+   ::before/::after are its tonal wash and accent rail, not corner brackets. */
+.card:not(.kpi).is-hovered::before,
+.card:not(.kpi).is-hovered::after { opacity: 1; width: 26px; height: 26px; }
+
+/* Crystal shimmer acknowledging a click. */
+.card.is-pressed .card__header::after { transform: translateX(130%); }
+
+/* ==========================================================================
+   4. Buttons — polished crystal
+   ========================================================================== */
+
+/* Reflection sweep on hover, riding above the gloss but below the label. */
+.btn .q-fx::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 34%, rgba(255, 255, 255, 0.28) 50%, transparent 66%);
+  transform: translateX(-140%);
+  transition: transform 900ms var(--ease-out);
+}
+.btn.is-hovered .q-fx::before { transform: translateX(140%); }
+
+/* ==========================================================================
+   5. Icon micro-animation — nothing on this surface is ever static
+   ========================================================================== */
+
+/* Search: the lens opens up as you engage with it. */
+.topbar__search-icon {
+  transition: transform 420ms var(--ease-spring), color var(--dur) var(--ease-out);
+}
+.topbar__search:hover .topbar__search-icon { transform: scale(1.1); }
+.topbar__search:focus-within .topbar__search-icon { transform: scale(1.22); color: var(--gold); }
+
+/* Refresh: the only gear-like control we have — it winds up on hover. */
+.btn:hover .icon[class*="icon"] { transform: scale(1.14) rotate(-6deg); }
+
+/* Notification counts swing like a bell when they carry a value. */
+.nav-item__count--alert:not(:empty) {
+  transform-origin: 50% 0;
+  animation: q-bell 5.5s var(--ease-out) infinite;
+}
+@keyframes q-bell {
+  0%, 78%, 100% { transform: rotate(0deg); }
+  82%  { transform: rotate(11deg); }
+  86%  { transform: rotate(-9deg); }
+  90%  { transform: rotate(6deg); }
+  94%  { transform: rotate(-3deg); }
+}
+
+/* Profile: a soft halo breathing behind the avatar. */
+.avatar { position: relative; }
+.avatar::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 199, 126, 0.5);
+  opacity: 0;
+  animation: q-halo 3.6s var(--ease-out) infinite;
+  pointer-events: none;
+}
+@keyframes q-halo {
+  0%   { transform: scale(0.86); opacity: 0.7; }
+  70%  { transform: scale(1.28); opacity: 0; }
+  100% { transform: scale(1.28); opacity: 0; }
+}
+
+/* AI marks breathe continuously. */
+.copilot-fab .icon { animation: q-breathe 3.4s var(--ease-out) infinite; }
+@keyframes q-breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.9; }
+  50%      { transform: scale(1.09); opacity: 1; }
+}
+
+/* ==========================================================================
+   6. Sidebar — liquid morph between menu items
+   ========================================================================== */
+
+.nav-list { position: relative; }
+
+.nav-morph {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  list-style: none;
+  border-radius: 14px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+  border: 1px solid rgba(232, 199, 126, 0.42);
+  background: linear-gradient(100deg, rgba(77, 141, 255, 0.32), rgba(167, 139, 250, 0.2) 60%, rgba(232, 199, 126, 0.12));
+  background-size: 220% 100%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 6px 20px rgba(77, 141, 255, 0.26);
+  animation: q-capsule 7s var(--ease-glass) infinite;
+  transition: opacity 260ms var(--ease-out);
+}
+.nav-morph.is-ready { opacity: 1; }
+@keyframes q-capsule {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* The indicator now carries the selected treatment, so the item itself only
+   needs to sit above it. */
+.nav-item { position: relative; z-index: 1; }
+.nav-item.is-active { background: transparent; border-color: transparent; box-shadow: none; }
+
+/* Sidebar icons drift gently. */
+.nav-item .icon { animation: q-drift 6.5s var(--ease-glass) infinite; }
+.nav-list li:nth-child(2n) .nav-item .icon { animation-duration: 8s;   animation-delay: -2s; }
+.nav-list li:nth-child(3n) .nav-item .icon { animation-duration: 9.5s; animation-delay: -4s; }
+@keyframes q-drift {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+/* ==========================================================================
+   7. AI assistant states
+   ========================================================================== */
+
+/* Thinking: energy waves plus a rotating particle ring. */
+.copilot__avatar { position: relative; }
+.copilot__avatar.is-thinking::before,
+.copilot__avatar.is-thinking::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 16px;
+  pointer-events: none;
+}
+.copilot__avatar.is-thinking::before {
+  border: 1px solid rgba(122, 176, 255, 0.6);
+  animation: q-energy 1.9s var(--ease-out) infinite;
+}
+.copilot__avatar.is-thinking::after {
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(232, 199, 126, 0.55) 40deg, transparent 90deg);
+  border-radius: 50%;
+  animation: q-orbit 1.5s linear infinite;
+  opacity: 0.8;
+}
+@keyframes q-energy {
+  0%   { transform: scale(0.85); opacity: 0.9; }
+  100% { transform: scale(1.5);  opacity: 0; }
+}
+@keyframes q-orbit { to { transform: rotate(360deg); } }
+
+/* Voice mode: concentric circular sound waves around the microphone. */
+.copilot__mic { position: relative; }
+.mic-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.mic-rings span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(232, 199, 126, 0.65);
+  opacity: 0;
+}
+.copilot__mic.is-live .mic-rings span { animation: q-sonar 1.9s var(--ease-out) infinite; }
+.copilot__mic.is-live .mic-rings span:nth-child(2) { animation-delay: 0.48s; }
+.copilot__mic.is-live .mic-rings span:nth-child(3) { animation-delay: 0.96s; }
+@keyframes q-sonar {
+  0%   { transform: scale(0.7); opacity: 0.85; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+/* ==========================================================================
+   8. Feedback — success, error, warning, information
+   ========================================================================== */
+
+.toast { position: relative; overflow: visible; }
+
+.toast--success {
+  animation:
+    toast-slide 460ms var(--ease-spring) backwards,
+    q-glow-jade 1.5s var(--ease-out) 460ms;
+}
+@keyframes q-glow-jade {
+  0%, 100% { box-shadow: var(--shadow-lg), 0 0 26px rgba(61, 245, 200, 0.22); }
+  40%      { box-shadow: var(--shadow-lg), 0 0 46px rgba(61, 245, 200, 0.55); }
+}
+
+.toast--error {
+  animation:
+    toast-slide 460ms var(--ease-spring) backwards,
+    q-shake 520ms var(--ease-out) 400ms;
+}
+@keyframes q-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  18% { transform: translate3d(-6px, 0, 0); }
+  38% { transform: translate3d(5px, 0, 0); }
+  58% { transform: translate3d(-3px, 0, 0); }
+  80% { transform: translate3d(2px, 0, 0); }
+}
+/* Red wave crossing the surface. */
+.toast--error::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 90, 110, 0.34) 50%, transparent 70%);
+  transform: translateX(-130%);
+  animation: q-wave 900ms var(--ease-out) 380ms;
+}
+@keyframes q-wave { to { transform: translateX(130%); } }
+
+.toast--warn { animation: toast-slide 460ms var(--ease-spring) backwards, q-amber 1.7s var(--ease-out) 460ms; }
+@keyframes q-amber {
+  0%, 100% { box-shadow: var(--shadow-lg), 0 0 24px rgba(232, 199, 126, 0.2); }
+  50%      { box-shadow: var(--shadow-lg), 0 0 44px rgba(232, 199, 126, 0.5); }
+}
+
+/* Champagne particles thrown by a success. */
+.q-spark {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--gold-bright);
+  box-shadow: 0 0 8px var(--gold);
+  animation: q-spark 900ms cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+}
+@keyframes q-spark {
+  0%   { transform: translate3d(0, 0, 0) scale(1);   opacity: 1; }
+  100% { transform: translate3d(var(--sx, 0px), var(--sy, 0px), 0) scale(0.2); opacity: 0; }
+}
+
+/* ==========================================================================
+   9. Scrolling — weightless, layered
+   ========================================================================== */
+
+.content { overscroll-behavior: contain; }
+
+/* The chrome gains presence once the workspace has been scrolled. */
+.topbar {
+  transition: box-shadow var(--dur-slow) var(--ease-out), background var(--dur-slow) var(--ease-out);
+}
+.topbar.is-scrolled {
+  box-shadow: var(--shadow-lg), 0 1px 0 rgba(232, 199, 126, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* ==========================================================================
+   10. Accessibility — reduced motion strips every ambient and physical effect
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .card:not(.q-phys),
+  .nav-item .icon,
+  .nav-morph,
+  .copilot-fab .icon,
+  .avatar::after,
+  .nav-item__count--alert:not(:empty),
+  .copilot__avatar.is-thinking::before,
+  .copilot__avatar.is-thinking::after,
+  .copilot__mic.is-live .mic-rings span,
+  .toast--success,
+  .toast--error,
+  .toast--error::after,
+  .toast--warn,
+  .q-ripple,
+  tr.q-row-flash {
+    animation: none !important;
+  }
+  .q-phys.q-phys { transform: none; }
+  .avatar::after { display: none; }
+  .btn .q-fx::before { display: none; }
+  .q-sheen { transition: none; }
+}
+
+@media (prefers-contrast: more) {
+  .q-sheen, .q-ripple { display: none; }
+  .nav-morph { background: #1b2c50; border-color: rgba(255, 255, 255, 0.7); animation: none; }
+}

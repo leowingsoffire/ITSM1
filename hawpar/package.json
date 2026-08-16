@@ -1,0 +1,44 @@
+{
+  "name": "vgc-ocr-intelligence",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VGC Group - AI Document Intelligence & OCR Platform (Azure Document Intelligence)",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node scripts/run-tests.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "e2e:settings": "node scripts/e2e-settings.mjs",
+    "e2e:settings-deep": "node scripts/e2e-settings-deep.mjs",
+    "legibility": "node scripts/legibility.mjs",
+    "smoke": "node scripts/e2e-smoke.mjs",
+    "build:seed": "node scripts/build-seed.mjs",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "dotenv": "16.4.5",
+    "express": "^4.22.2",
+    "multer": "^2.2.0",
+    "nodemailer": "^6.10.1",
+    "pdf-lib": "1.17.1"
+  },
+  "keywords": [
+    "azure",
+    "document-intelligence",
+    "ocr",
+    "multi-agent",
+    "workflow",
+    "vgc"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "playwright-core": "^1.62.1",
+    "wrangler": "^4.116.0"
+  }
+}

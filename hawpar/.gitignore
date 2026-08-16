@@ -1,0 +1,15 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+dist/
+coverage/
+artifacts/
+.DS_Store
+Thumbs.db
+.vscode/
+*.zip
+.copilot-azure/

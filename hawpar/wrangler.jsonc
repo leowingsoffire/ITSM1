@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vgc-ocr-intelligence",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  // iconv-lite wires itself into node:stream at require time, which the edge
+  // bundler cannot resolve. Request bodies only need TextDecoder here.
+  "alias": {
+    "iconv-lite": "./worker/shims/iconv-lite.cjs"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "PERSISTENCE": "memory",
+    "ANALYZER_MODE": "demo",
+    "LOG_LEVEL": "info",
+    "PIPELINE_CONCURRENCY": "2",
+    "MAX_UPLOAD_MB": "20"
+  },
+  "assets": {
+    "directory": "src/public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+}

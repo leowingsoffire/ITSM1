@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05070c" />
+    <meta name="description" content="VGC OCR Intelligence — multi-agent OCR and document understanding powered by Azure AI Document Intelligence." />
+    <title>VGC OCR Intelligence</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101c38'/%3E%3Cpath d='M8 22V10h4.6l3.4 7 3.4-7H24v12h-3.2v-6.6L17.4 22h-2.8l-3.4-6.6V22z' fill='%23e8c77e'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="/css/quantum.css" />
+    <link rel="stylesheet" href="/css/motion.css" />
+    <link rel="stylesheet" href="/css/vgc.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="topbar">
+        <div class="topbar__brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" role="presentation">
+              <defs>
+                <linearGradient id="brand-crystal" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#1c3a72" />
+                  <stop offset="55%" stop-color="#101c38" />
+                  <stop offset="100%" stop-color="#2a1f4d" />
+                </linearGradient>
+                <linearGradient id="brand-gold" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#f7e4bb" />
+                  <stop offset="100%" stop-color="#e8c77e" />
+                </linearGradient>
+              </defs>
+              <rect width="32" height="32" rx="9" fill="url(#brand-crystal)" />
+              <rect x="0.5" y="0.5" width="31" height="31" rx="8.5" fill="none" stroke="rgba(255,255,255,0.28)" />
+              <path d="M7.6 10h3.9l4.5 8.6 4.5-8.6h3.9l-7 12h-2.8z" fill="url(#brand-gold)" />
+              <path d="M12.4 24.2h7.2v1.6h-7.2z" fill="url(#brand-gold)" opacity="0.55" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-text__title">VGC OCR Intelligence</span>
+            <span class="brand-text__subtitle">Multi-agent OCR on Azure Document Intelligence</span>
+          </div>
+        </div>
+
+        <div class="topbar__search">
+          <label class="visually-hidden" for="global-search">Search all documents</label>
+          <svg class="topbar__search-icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M9 3a6 6 0 104.47 10.03l3.25 3.25 1.41-1.41-3.25-3.25A6 6 0 009 3zm0 2a4 4 0 110 8 4 4 0 010-8z" fill="currentColor" />
+          </svg>
+          <input id="global-search" type="search" placeholder="Search across every processed document…" autocomplete="off" />
+        </div>
+
+        <div class="topbar__meta">
+          <span class="pill pill--engine" id="engine-badge" title="Active analysis engine">Loading…</span>
+          <span class="pill pill--queue" id="queue-badge" title="Pipeline queue depth">Queue 0</span>
+          <button class="avatar" id="sign-out" type="button" title="Account and workspace">VG</button>
+        </div>
+      </header>
+
+      <nav class="sidebar" aria-label="Primary">
+        <ul class="nav-list" id="nav-list">
+          <li><a class="nav-item" href="#/dashboard" data-view="dashboard" data-icon="dashboard" aria-label="Command Centre" title="Command Centre"><span class="nav-item__label">Command Centre</span></a></li>
+          <li><a class="nav-item" href="#/ingest" data-view="ingest" data-icon="upload" aria-label="Ingest Documents" title="Ingest Documents"><span class="nav-item__label">Ingest Documents</span></a></li>
+          <li><a class="nav-item" href="#/documents" data-view="documents" data-icon="library" aria-label="Document Library" title="Document Library"><span class="nav-item__label">Document Library</span><span class="nav-item__count" id="nav-count-documents"></span></a></li>
+          <li><a class="nav-item" href="#/workflows" data-view="workflows" data-icon="workflow" aria-label="Workflows" title="Workflows"><span class="nav-item__label">Workflows</span><span class="nav-item__count nav-item__count--alert" id="nav-count-workflows"></span></a></li>
+          <li><a class="nav-item" href="#/agents" data-view="agents" data-icon="agents" aria-label="Agent Mesh" title="Agent Mesh"><span class="nav-item__label">Agent Mesh</span></a></li>
+          <li><a class="nav-item" href="#/accuracy" data-view="accuracy" data-icon="target" aria-label="Accuracy Assurance" title="Accuracy Assurance"><span class="nav-item__label">Accuracy</span></a></li>
+          <li><a class="nav-item" href="#/review" data-view="review" data-icon="review" aria-label="Review Queue" title="Review Queue"><span class="nav-item__label">Review Queue</span><span class="nav-item__count nav-item__count--alert" id="nav-count-review"></span></a></li>
+          <li><a class="nav-item" href="#/claims" data-view="claims" data-icon="scale" aria-label="Marketing Claims" title="Marketing Claims"><span class="nav-item__label">Marketing Claims</span><span class="nav-item__count nav-item__count--alert" id="nav-count-claims"></span></a></li>
+          <li><a class="nav-item" href="#/search" data-view="search" data-icon="search" aria-label="Content Search" title="Content Search"><span class="nav-item__label">Content Search</span></a></li>
+          <li><a class="nav-item" href="#/azure" data-view="azure" data-icon="azure" aria-label="Azure Document Intelligence" title="Azure Document Intelligence"><span class="nav-item__label">Azure DI</span></a></li>
+          <li><a class="nav-item" href="#/cost" data-view="cost" data-icon="cost" aria-label="Cost &amp; Value" title="Cost &amp; Value"><span class="nav-item__label">Cost &amp; Value</span></a></li>
+          <li><a class="nav-item" href="#/blueprint" data-view="blueprint" data-icon="blueprint" aria-label="Solution Blueprint" title="Solution Blueprint"><span class="nav-item__label">Solution Blueprint</span></a></li>
+          <li><a class="nav-item" href="#/settings" data-view="settings" data-icon="settings" aria-label="Settings" title="Settings"><span class="nav-item__label">Settings</span></a></li>
+        </ul>
+
+        <div class="sidebar__footer">
+          <div class="sidebar__note" id="sidebar-engine-note">Checking analysis engine…</div>
+          <a class="btn btn--ghost btn--block" href="/api/export/documents.xlsx" id="export-workbook"><span>Export workbook (.xlsx)</span></a>
+        </div>
+      </nav>
+
+      <main class="content" id="view-root" tabindex="-1">
+        <div class="loading-state">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Starting the VGC OCR Intelligence workspace…</p>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>
