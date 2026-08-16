@@ -164,7 +164,7 @@ its status, its attribution and the detail behind it.
 ## Azure Document Intelligence — deep integration
 
 * **Eight-model catalogue** with tiers, outputs, list prices and the routing decision for every document type.
-* **Seven add-on features** (`ocr.highResolution`, `ocr.formula`, `ocr.barcode`, `ocr.font`, `languages`,
+* **Seven add-on features** (`ocr.highResolution`, `ocr.formula`, `barcodes`, `ocr.font`, `languages`,
   `keyValuePairs`, `queryFields`) requested only when the selected model actually supports them.
 * **Query fields** are derived from the document type's field contract.
 * **Long-running operation polling** with throttle-aware backoff, and **explicit fallback** — if Azure is

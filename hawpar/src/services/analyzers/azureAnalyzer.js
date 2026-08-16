@@ -25,21 +25,53 @@ const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 240; // ~6 minutes, enough for 1000+ page documents.
 const MAX_RETRIES = 4;
 const MAX_QUERY_FIELDS = 20;
+const QUERY_FIELDS_FEATURE = 'queryFields';
 
-/** Builds the `features`/`queryFields` query fragment for the analyse call. */
+export { addOnQuery as buildAddOnQuery };
+
+/**
+ * Builds the `features`/`queryFields` query fragment for the analyse call.
+ *
+ * Azure treats `queryFields` as an add-on capability: naming query fields
+ * without also listing `queryFields` in `features` is rejected with
+ * `InvalidParameter`. That invariant belongs to the request, so it is enforced
+ * here rather than trusted to every caller.
+ */
 function addOnQuery(features = [], queryFields = []) {
   const parts = [];
-  const cleanFeatures = [...new Set(features.filter((entry) => typeof entry === 'string' && entry.trim()))];
-  if (cleanFeatures.length > 0) parts.push(`&features=${encodeURIComponent(cleanFeatures.join(','))}`);
+  const cleanFeatures = new Set(features.filter((entry) => typeof entry === 'string' && entry.trim()));
 
   const cleanQueryFields = [...new Set(queryFields.filter((entry) => typeof entry === 'string' && entry.trim()))].slice(
     0,
     MAX_QUERY_FIELDS
   );
+  if (cleanQueryFields.length > 0) cleanFeatures.add(QUERY_FIELDS_FEATURE);
+  else cleanFeatures.delete(QUERY_FIELDS_FEATURE);
+
+  if (cleanFeatures.size > 0) parts.push(`&features=${encodeURIComponent([...cleanFeatures].join(','))}`);
   if (cleanQueryFields.length > 0) {
     parts.push(`&queryFields=${encodeURIComponent(cleanQueryFields.join(','))}`);
   }
   return parts.join('');
+}
+
+/**
+ * Azure returns `{ error: { code, message, innererror } }`. Surfacing that text
+ * is the difference between "rejected the document" and an actionable cause
+ * such as an add-on the selected model does not support.
+ */
+function describeAzureError(body) {
+  if (!body) return 'no response body';
+  try {
+    const parsed = JSON.parse(body);
+    const error = parsed.error ?? parsed;
+    const inner = error.innererror;
+    const code = inner?.code ?? error.code;
+    const message = inner?.message ?? error.message;
+    return [code, message].filter(Boolean).join(' — ') || body.slice(0, 200);
+  } catch {
+    return body.slice(0, 200);
+  }
 }
 
 async function submitAnalysis({
@@ -90,12 +122,17 @@ async function submitAnalysis({
     if (response.status === 401 || response.status === 403) {
       throw analyzerFailed('Azure rejected the credentials for Document Intelligence.', {
         status: response.status,
+        detail: describeAzureError(body),
         hint: 'Verify AZURE_DOCINT_KEY or the "Cognitive Services User" role assignment.'
       });
     }
     if (response.status === 429) throw throttleError(60);
-    throw analyzerFailed('Azure Document Intelligence rejected the document.', {
+    throw analyzerFailed(`Azure Document Intelligence rejected the request (HTTP ${response.status}): ${describeAzureError(body)}`, {
       status: response.status,
+      modelId: modelId ?? analyzerConfig.modelId,
+      features: [...features],
+      queryFields: [...queryFields],
+      pages: pages ?? null,
       detail: body.slice(0, 500)
     });
   }
@@ -124,8 +161,10 @@ async function pollResult({ analyzerConfig, operationLocation, correlationId }) 
     const payload = await response.json();
     if (payload.status === 'succeeded') return payload;
     if (payload.status === 'failed') {
-      throw analyzerFailed('Azure Document Intelligence could not process the document.', {
-        detail: payload.error?.message ?? 'Unknown analyser failure.'
+      const detail = payload.error?.innererror?.message ?? payload.error?.message ?? 'Unknown analyser failure.';
+      throw analyzerFailed(`Azure Document Intelligence could not process the document: ${detail}`, {
+        azureCode: payload.error?.innererror?.code ?? payload.error?.code ?? null,
+        detail
       });
     }
   }
@@ -224,7 +263,7 @@ function normaliseDocumentFields(result, pagesByNumber) {
   return candidates;
 }
 
-/** Barcodes / QR codes returned by the `ocr.barcode` add-on. */
+/** Barcodes / QR codes returned by the `barcodes` add-on. */
 function normaliseBarcodes(azurePages) {
   const barcodes = [];
   for (const page of azurePages) {
@@ -238,6 +277,28 @@ function normaliseBarcodes(azurePages) {
     }
   }
   return barcodes;
+}
+
+/**
+ * Selection marks (checkboxes, radio buttons) returned by Layout.
+ *
+ * The pipeline stores these as evidence and slices them, so this must be an
+ * array of marks — returning a bare count silently broke every live Azure
+ * analysis at the persistence step.
+ */
+function normaliseSelectionMarks(azurePages) {
+  const marks = [];
+  for (const page of azurePages) {
+    for (const mark of page.selectionMarks ?? []) {
+      marks.push({
+        pageNumber: page.pageNumber,
+        state: mark.state ?? 'unselected',
+        confidence: Number((mark.confidence ?? 0.9).toFixed(4)),
+        box: polygonToBox(mark.polygon, page)
+      });
+    }
+  }
+  return marks;
 }
 
 /** Formulas returned by the `ocr.formula` add-on. */
@@ -362,7 +423,7 @@ export function normaliseAzureResult(payload, { modelId, apiVersion, durationMs,
     documentFields: normaliseDocumentFields(result, pagesByNumber),
     barcodes: normaliseBarcodes(azurePages),
     formulas: normaliseFormulas(azurePages),
-    selectionMarks: azurePages.reduce((sum, page) => sum + (page.selectionMarks?.length ?? 0), 0),
+    selectionMarks: normaliseSelectionMarks(azurePages),
     tables,
     paragraphs,
     fullText: result.content ?? pages.map((page) => page.lines.map((line) => line.content).join('\n')).join('\n'),

@@ -22,8 +22,18 @@ const MAX_STRING_LENGTH = 2000;
 function sanitise(value, depth = 0) {
   if (depth > 6) return '[truncated]';
   if (value === null || value === undefined) return value;
+  // A typed error carries the diagnosis in `code`/`status`/`meta` — the upstream
+  // status and the service's own error body. Dropping them leaves an operator
+  // with a stack trace and no cause. `meta` still goes through redaction.
   if (value instanceof Error) {
-    return { name: value.name, message: value.message, stack: value.stack };
+    const serialised = { name: value.name, message: value.message, stack: value.stack };
+    if (value.code !== undefined) serialised.code = value.code;
+    if (value.status !== undefined) serialised.status = value.status;
+    if (value.meta && typeof value.meta === 'object' && Object.keys(value.meta).length > 0) {
+      serialised.meta = sanitise(value.meta, depth + 1);
+    }
+    if (value.cause instanceof Error) serialised.cause = sanitise(value.cause, depth + 1);
+    return serialised;
   }
   if (typeof value === 'string') {
     return value.length > MAX_STRING_LENGTH ? `${value.slice(0, MAX_STRING_LENGTH)}…` : value;

@@ -39,6 +39,7 @@ import { SUPPLIERS, resolveRegistrationNumber } from '../src/domain/referenceDat
 import { instantiateWorkflow, scorePriority, slaState, workflowSummary } from '../src/services/workflow.service.js';
 import { authenticationMode, integrationProfile, modelCatalogue, probeService } from '../src/services/azure.service.js';
 import { analyzeWithDemoEngine } from '../src/services/analyzers/demoAnalyzer.js';
+import { buildAddOnQuery } from '../src/services/analyzers/azureAnalyzer.js';
 import { classifyDocument } from '../src/services/classification.service.js';
 import { extractFields } from '../src/services/extraction.service.js';
 import { validateDocument } from '../src/services/validation.service.js';
@@ -788,6 +789,27 @@ describe('azure integration surface', () => {
     assert.ok(catalogue.models.some((entry) => entry.inUse), 'at least one model must actually be routed to');
   });
 
+  // Verified against the live 2024-11-30 service: Read-tier models reject
+  // `keyValuePairs` and `queryFields` outright, and the barcode capability is
+  // named `barcodes` (an `ocr.barcode` spelling is rejected by every model).
+  test('should_never_route_an_add_on_the_target_model_cannot_serve', () => {
+    const READ_ONLY_REJECTS = new Set(['keyValuePairs', 'queryFields']);
+    const catalogue = modelCatalogue();
+    for (const route of catalogue.routing) {
+      const model = getAzureModel(route.selectedModelId);
+      for (const addOnId of route.addOns) {
+        assert.notEqual(addOnId, 'ocr.barcode', `${route.typeId} requests a feature id Azure rejects`);
+        if (model.tier === 'read') {
+          assert.equal(
+            READ_ONLY_REJECTS.has(addOnId),
+            false,
+            `${route.typeId} asks ${model.id} for ${addOnId}, which Read-tier models reject`
+          );
+        }
+      }
+    }
+  });
+
   test('should_never_throw_when_probing_an_unconfigured_service', async () => {
     const probe = await probeService({ force: true });
     assert.ok(typeof probe.reachable === 'boolean');
@@ -795,6 +817,29 @@ describe('azure integration surface', () => {
     assert.ok(typeof probe.message === 'string' && probe.message.length > 0);
     assert.ok(['not-configured', 'offline-demo', 'unauthorised', 'error', 'healthy'].includes(probe.state));
     assert.ok(Array.isArray(probe.resourceModels));
+  });
+
+  // Azure rejects `queryFields=` unless `features=` also names the queryFields
+  // add-on. A live deployment degraded every document to the offline engine
+  // because of exactly this, so the invariant is locked down here.
+  test('should_declare_the_queryFields_capability_whenever_query_fields_are_named', () => {
+    const query = buildAddOnQuery(['barcodes', 'keyValuePairs'], ['invoiceNumber', 'totalAmount']);
+    const features = new URLSearchParams(query.replace(/^&/, '')).get('features').split(',');
+    assert.ok(features.includes('queryFields'), `features must declare queryFields, got ${features.join(',')}`);
+    assert.ok(features.includes('barcodes'));
+    assert.ok(features.includes('keyValuePairs'));
+    assert.equal(new URLSearchParams(query.replace(/^&/, '')).get('queryFields'), 'invoiceNumber,totalAmount');
+  });
+
+  test('should_not_request_the_queryFields_capability_when_no_query_fields_are_named', () => {
+    const query = buildAddOnQuery(['queryFields', 'barcodes'], []);
+    const params = new URLSearchParams(query.replace(/^&/, ''));
+    assert.equal(params.get('features'), 'barcodes');
+    assert.equal(params.get('queryFields'), null);
+  });
+
+  test('should_send_nothing_when_no_capabilities_are_requested', () => {
+    assert.equal(buildAddOnQuery([], []), '');
   });
 });
 

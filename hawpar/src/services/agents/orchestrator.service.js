@@ -91,12 +91,17 @@ const IMPLEMENTATIONS = {
     const hintedType = state.typeHint ?? null;
     const plannedModel = hintedType ? selectModelForType(hintedType) : config.analyzer.modelId;
     const addOns = hintedType ? addOnsForType(hintedType, plannedModel) : [];
-    const queryFields = hintedType
-      ? getDocumentType(hintedType)
-          .fields.filter((field) => field.critical && field.type !== 'table')
-          .map((field) => field.key)
-          .slice(0, 10)
-      : [];
+    // Query fields are a billed add-on. Naming them without the matching
+    // capability is rejected outright by Azure, and requesting them for a type
+    // the plan did not budget for would silently inflate the per-page cost — so
+    // they are only asked for when the plan actually enables the add-on.
+    const queryFields =
+      hintedType && addOns.includes('queryFields')
+        ? getDocumentType(hintedType)
+            .fields.filter((field) => field.critical && field.type !== 'table')
+            .map((field) => field.key)
+            .slice(0, 10)
+        : [];
 
     const analysis = await analyzeDocument({
       buffer,

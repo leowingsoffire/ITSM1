@@ -188,7 +188,7 @@ export const AZURE_ADD_ONS = Object.freeze([
     billed: true
   }),
   Object.freeze({
-    id: 'ocr.barcode',
+    id: 'barcodes',
     name: 'Barcode & QR extraction',
     description: 'Reads barcodes and QR codes — batch labels, container seals and payment codes.',
     appliesTo: ['delivery_order', 'bill_of_lading', 'certificate_of_analysis'],
