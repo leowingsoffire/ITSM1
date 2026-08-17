@@ -16,6 +16,7 @@
     "e2e:settings": "node scripts/e2e-settings.mjs",
     "e2e:settings-deep": "node scripts/e2e-settings-deep.mjs",
     "legibility": "node scripts/legibility.mjs",
+    "design:shots": "node scripts/design-shots.mjs",
     "smoke": "node scripts/e2e-smoke.mjs",
     "build:seed": "node scripts/build-seed.mjs",
     "cf:dev": "wrangler dev",

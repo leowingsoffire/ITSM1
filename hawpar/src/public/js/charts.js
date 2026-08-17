@@ -1,71 +1,33 @@
 /**
  * Lightweight SVG charts — no charting library, no extra bytes to ship.
- * Rendered in the Quantum Crystal holographic palette.
+ * Rendered in the enterprise design-token palette (see css/app.css).
  */
 import { el, svgEl } from './util.js';
 
-/** Holographic series colours: electric blue → cyan → purple → champagne gold. */
-const PALETTE = Object.freeze(['#4d8dff', '#22d3ee', '#a78bfa', '#e8c77e', '#3df5c8', '#7fb2ff', '#ff5a6e', '#c4b5fd']);
-
-/**
- * Gradients and glow filters live in a single hidden SVG appended to the
- * document, so every chart can reference them by a stable id without each
- * instance redefining (and colliding on) the same ids.
- */
-function ensureChartDefs() {
-  if (document.getElementById('q-chart-defs')) return;
-
-  const stop = (offset, color, opacity = 1) =>
-    svgEl('stop', { offset, 'stop-color': color, 'stop-opacity': opacity });
-
-  const defs = svgEl('defs', {}, [
-    svgEl('linearGradient', { id: 'q-bar-grad', x1: '0', y1: '0', x2: '0', y2: '1' }, [
-      stop('0%', '#7fb2ff'),
-      stop('55%', '#4d8dff'),
-      stop('100%', '#22d3ee', 0.55)
-    ]),
-    svgEl('linearGradient', { id: 'q-bar-grad-hot', x1: '0', y1: '0', x2: '0', y2: '1' }, [
-      stop('0%', '#f7e4bb'),
-      stop('60%', '#e8c77e'),
-      stop('100%', '#a78bfa', 0.6)
-    ]),
-    svgEl('linearGradient', { id: 'q-donut-hole', x1: '0', y1: '0', x2: '1', y2: '1' }, [
-      stop('0%', '#10182b'),
-      stop('100%', '#3f5da8')
-    ])
-  ]);
-
-  const holder = svgEl('svg', {
-    id: 'q-chart-defs',
-    width: 0,
-    height: 0,
-    'aria-hidden': 'true',
-    focusable: 'false',
-    style: 'position:absolute;width:0;height:0;overflow:hidden'
-  }, [defs]);
-
-  document.body.append(holder);
-}
+/** Enterprise series colours: accent blue first, then distinguishable neutrals-with-hue. */
+const PALETTE = Object.freeze(['#1d5bc4', '#0d7f91', '#6b56cd', '#05865c', '#b45f0d', '#5f6c7e', '#c03136', '#7a8798']);
 
 /**
  * Vertical bar chart.
  * @param {Array<{label: string, value: number}>} data
  */
-export function barChart(data, { height = 150, barGap = 5, valueSuffix = '' } = {}) {
-  ensureChartDefs();
+export function barChart(data, { height = 150, barGap = 5, valueSuffix = '', emptyLabel = 'No activity in this window' } = {}) {
   const width = 460;
   const paddingBottom = 20;
   const paddingTop = 14;
   const maximum = Math.max(1, ...data.map((entry) => entry.value));
   const barWidth = Math.max(4, (width - barGap * (data.length - 1)) / Math.max(1, data.length));
   const plotHeight = height - paddingBottom - paddingTop;
+  // Every bucket at zero is a legitimate reading, not missing data — but a row
+  // of 1px stubs looks identical to a broken chart, so say so explicitly.
+  const isEmpty = data.length === 0 || data.every((entry) => !(entry.value > 0));
 
   const svg = svgEl('svg', {
     class: 'chart-svg',
     viewBox: `0 0 ${width} ${height}`,
     preserveAspectRatio: 'none',
     role: 'img',
-    'aria-label': 'Throughput chart'
+    'aria-label': isEmpty ? `Throughput chart — ${emptyLabel}` : 'Throughput chart'
   });
 
   svg.append(
@@ -95,6 +57,22 @@ export function barChart(data, { height = 150, barGap = 5, valueSuffix = '' } = 
     }
   });
 
+  if (isEmpty) {
+    svg.append(
+      svgEl(
+        'text',
+        {
+          class: 'chart-empty-label',
+          x: width / 2,
+          y: paddingTop + plotHeight / 2,
+          'text-anchor': 'middle',
+          'dominant-baseline': 'middle'
+        },
+        emptyLabel
+      )
+    );
+  }
+
   return svg;
 }
 
@@ -103,14 +81,13 @@ export function barChart(data, { height = 150, barGap = 5, valueSuffix = '' } = 
  * @param {Array<{key: string, count: number}>} data
  */
 export function donutChart(data, { size = 168, thickness = 26 } = {}) {
-  ensureChartDefs();
   const total = data.reduce((sum, entry) => sum + entry.count, 0);
   const radius = size / 2 - thickness / 2;
   const centre = size / 2;
   const circumference = 2 * Math.PI * radius;
 
   const svg = svgEl('svg', {
-    class: 'chart-svg',
+    class: 'chart-svg chart-svg--donut',
     viewBox: `0 0 ${size} ${size}`,
     width: size,
     height: size,
@@ -121,11 +98,11 @@ export function donutChart(data, { size = 168, thickness = 26 } = {}) {
   // Track ring — always drawn so the donut keeps its shape when empty.
   svg.append(
     svgEl('circle', {
+      class: 'donut-track',
       cx: centre,
       cy: centre,
       r: radius,
       fill: 'none',
-      stroke: 'rgba(255,255,255,0.08)',
       'stroke-width': thickness
     })
   );
@@ -159,13 +136,13 @@ export function donutChart(data, { size = 168, thickness = 26 } = {}) {
         'text-anchor': 'middle',
         'font-size': '22',
         'font-weight': '700',
-        fill: 'url(#q-donut-hole)'
+        fill: 'var(--text)'
       },
       String(total)
     ),
     svgEl(
       'text',
-      { x: centre, y: centre + 16, 'text-anchor': 'middle', 'font-size': '11', 'font-weight': '500', fill: 'var(--slate-600)' },
+      { x: centre, y: centre + 16, 'text-anchor': 'middle', 'font-size': '11', 'font-weight': '500', fill: 'var(--text-secondary)' },
       'documents'
     )
   );
@@ -176,8 +153,7 @@ export function donutChart(data, { size = 168, thickness = 26 } = {}) {
         el('span', {
           style: {
             width: '9px', height: '9px', borderRadius: '3px', flex: '0 0 9px',
-            background: PALETTE[index % PALETTE.length],
-            boxShadow: `0 0 8px ${PALETTE[index % PALETTE.length]}`
+            background: PALETTE[index % PALETTE.length]
           }
         }),
         el('span', { text: entry.key, style: { flex: '1' } }),

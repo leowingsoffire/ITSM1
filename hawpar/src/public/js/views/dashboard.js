@@ -151,7 +151,10 @@ export async function render() {
         icon: 'bolt',
         tone: 'amber',
         subtitle: 'Documents completed per 5-minute bucket',
-        body: barChart(dashboard.throughput.map((bucket) => ({ label: bucket.label, value: bucket.documents })))
+        body: barChart(
+          dashboard.throughput.map((bucket) => ({ label: bucket.label, value: bucket.documents })),
+          { emptyLabel: 'No documents completed in the last 60 minutes' }
+        )
       }),
       card({
         title: 'Document mix',

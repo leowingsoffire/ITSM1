@@ -34,8 +34,9 @@ Azure AI Document Intelligence is priced **per page**, so the model you choose i
    classification never pays for Layout twice.
 3. **Zero-marginal-cost intelligence** — classification, five-layer extraction and all 26 business rules
    run in-process on the App Service instance. No per-call AI charges.
-4. **Right-sized compute** — Linux App Service **P1v3 x 2** (~US$221.92/month) for zone-redundant
-   production; drop to B1 (~US$12.41/month) for dev/test.
+4. **Right-sized compute** — the cost profile is built on Linux App Service **P1v3 x 2**
+   (~US$221.92/month). See [Scaling](#scaling) — the shipped template deploys **one** instance,
+   because processing state is currently in-process; drop to B1 (~US$12.41/month) for dev/test.
 5. **Storage lifecycle** — originals tier to cool at 30 days and archive at 180 days.
 6. **Managed identity everywhere** — no keys, so no Key Vault secret-rotation overhead.
 7. **Log Analytics with sampled request logging**, keeping ingestion inside the agreed 25 GB/month.
@@ -50,7 +51,7 @@ assumption is adjustable, and the budget meter reports live variance against S$1
 | Documents per month | 18,000 (216,000 pages) |
 | Average pages per document | 12 |
 | Pages needing Layout | 32% (adaptive routing on) |
-| App Service | P1v3 x 2 instances (zone redundant) |
+| App Service | P1v3 x 2 instances (costed headroom — see [Scaling](#scaling)) |
 | Blob storage | 435 GB hot + transactions |
 | Log Analytics ingest | 25 GB/month |
 | Private endpoints | 3 |
@@ -248,7 +249,7 @@ If Azure is unavailable at runtime the platform **degrades explicitly** to the d
 ```
 Browser SPA (vanilla JS, strict CSP)
       │  REST + Server-Sent Events
-Azure App Service (Linux P1v3 x 2, Node.js 20, system-assigned identity)
+Azure App Service (Linux P1v3, Node.js 20, system-assigned identity)
       ├─ Ingestion            magic-byte validation, checksum, batching
       ├─ Worker pool          bounded concurrency, 6 stages, live events
       │     └─ Orchestrator   11 agents · dependency waves · per-agent evidence
@@ -270,6 +271,42 @@ re-emits these six stages over SSE, so the live progress contract is unchanged.
 
 ---
 
+## Design system
+
+The interface is a flat, light enterprise theme built entirely from CSS custom
+properties. There is no CSS framework and no runtime theming layer.
+
+| Layer | File | Owns |
+| --- | --- | --- |
+| Tokens + shell | `public/css/app.css` | Palette, type scale, spacing, radii, the `topbar / sidebar / content` grid, and the shared primitives (cards, KPIs, tables, buttons, forms, badges, charts) |
+| Application chrome | `public/css/components.css` | Auth gate, workspace-creation wizard, account menu, Copilot drawer |
+| Feature components | `public/css/vgc.css` | Chips, progress bars, agent mesh topology, workflow timeline, reliability curve, settings |
+
+**Colour is load-bearing, not decorative.** A single accent (`--accent #1d5bc4`)
+carries interaction; hue otherwise appears only to encode status — success,
+warning, danger. Surfaces are white on a `#f5f6f8` canvas, separated by 1px
+borders rather than shadows.
+
+Each status colour has two steps, and the distinction matters:
+
+- `--success` / `--warning` / `--danger` are **object** colours — fills, bars, dots.
+- `--success-ink` / `--warning-ink` / `--danger-ink` are **text** colours, set
+  deliberately darker.
+
+The ink values are chosen against the *measured* contrast of rendered pixels,
+not the nominal token ratio. Subpixel antialiasing costs small text roughly
+0.7–1.1 of contrast, so a token that computes to 5.3:1 can render at 4.2:1.
+Every text run in the application measures **4.5:1 or better after that loss**,
+and `scripts/legibility.mjs` enforces it across 13 routes × 3 breakpoints
+(1,770 runs) — `npm run legibility`. The same check runs inside `npm run e2e`.
+
+Motion is functional only: state transitions and feedback, no ambient
+animation, parallax or custom cursor. All styling is applied through CSSOM
+(`util.js` → `applyStyle`) because the CSP forbids `style-src 'unsafe-inline'`;
+see the note in `src/public/js/util.js` before adding a `setAttribute('style')`.
+
+---
+
 ## Deploying to Azure
 
 ```powershell
@@ -283,7 +320,7 @@ az deployment group create `
 
 The Bicep template provisions:
 
-- App Service Plan (Linux **P1v3**, `appServicePlanCapacity` = 2) and Web App with a **system-assigned managed identity**
+- App Service Plan (Linux **P1v3**, `appServicePlanCapacity` = 1 — see [Scaling](#scaling)) and Web App with a **system-assigned managed identity**
 - **Azure AI Document Intelligence** (S0) with `disableLocalAuth: true`
 - Storage account (HTTPS-only, no public blobs, shared-key disabled) with a lifecycle policy
 - Key Vault (RBAC, soft-delete, purge protection)
@@ -316,7 +353,7 @@ engine and records the reason on each document rather than failing the request.
 The whole browser suite can be pointed at the deployed site, which is the strongest end-to-end proof:
 
 ```powershell
-$env:E2E_BASE_URL = "https://<webAppName>.azurewebsites.net"
+$env:E2E_BASE = "https://<webAppName>.azurewebsites.net"
 npm run e2e
 ```
 
@@ -335,6 +372,24 @@ npm run cf:deploy
 
 Rebuild the snapshot whenever the pipeline, agents, workflows or accuracy engine change, otherwise the edge
 preview will serve records that predate them.
+
+---
+
+### Scaling
+
+`appServicePlanCapacity` is capped at **1**, deliberately.
+
+The document index, the processing queue and the pipeline gauge are all held
+**in-process**. On two or more instances the Azure load balancer spreads requests
+across them, so a document ingested on instance A is invisible to instance B:
+the library serves stale or missing records, and `/api/pipeline/status` can report
+idle while another instance is still working. That is a correctness failure, not
+a performance one, so the template refuses to express it.
+
+The reference cost profile still prices **two** P1v3 instances. That is costed
+headroom for the shared-state work — moving the index and queue out to Azure
+Storage / Service Bus — after which the cap can be lifted and the profile becomes
+accurate as-deployed. Until then, scale **up** (P1v3 → P2v3), not out.
 
 ---
 
@@ -377,8 +432,10 @@ src/
   middleware/     Correlation IDs, security headers, CORS, auth, rate limiting
   routes/         Document lifecycle, platform and intelligence APIs
   public/         Single-page application (HTML, CSS, ES modules)
+    css/          app.css (tokens + shell), components.css (chrome), vgc.css (features)
     assets/azure/ Official Microsoft Azure service icons (see ATTRIBUTION.md)
-scripts/          Seed builder, smoke test, Playwright end-to-end suite
+scripts/          Seed builder, smoke test, Playwright end-to-end suite,
+                  legibility sweep, design screenshot harness
 tests/            node --test unit and API integration suites
 ```
 

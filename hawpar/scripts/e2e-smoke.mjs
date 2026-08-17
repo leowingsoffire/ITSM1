@@ -13,7 +13,7 @@ const ok = (name, pass, detail = '') => {
 const browser = await chromium.launch({ executablePath: EXE, headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.emulateMedia({ reducedMotion: 'reduce' }); // motion.js animates transforms forever otherwise
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e)));
 

@@ -13,7 +13,7 @@ import { CHROMIUM_EXE, dismissOnboarding, signIn, settleUi } from './lib/e2e-ses
 import { measureTextContrast } from './lib/contrast.mjs';
 
 const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8080';
-const THRESHOLD = Number(process.env.CONTRAST_THRESHOLD ?? 1.8);
+const THRESHOLD = Number(process.env.CONTRAST_THRESHOLD ?? 4.5);
 const topIndex = process.argv.indexOf('--top');
 const TOP = topIndex === -1 ? 0 : Number(process.argv[topIndex + 1] ?? 10);
 

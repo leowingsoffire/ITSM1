@@ -27,10 +27,10 @@ param location string = resourceGroup().location
 @allowed(['B1', 'B2', 'P0v3', 'P1v3', 'P2v3'])
 param appServicePlanSku string = 'P1v3'
 
-@description('Instances in the App Service plan. Two or more gives zone redundancy, as costed in the reference profile.')
+@description('Instances in the App Service plan. The application keeps its document index and processing queue in-process, so it must run on exactly one instance; scaling out serves stale or missing documents from the extra instances. The reference profile costs two instances for a future shared-state architecture.')
 @minValue(1)
-@maxValue(20)
-param appServicePlanCapacity int = 2
+@maxValue(1)
+param appServicePlanCapacity int = 1
 
 @description('Document Intelligence SKU. S0 is pay-as-you-go; F0 gives 500 free pages per month.')
 @allowed(['F0', 'S0'])

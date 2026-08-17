@@ -1,5 +1,5 @@
 /**
- * login.js — the Quantum Crystal welcome gate.
+ * login.js — the sign-in gate.
  *
  * ────────────────────────────────────────────────────────────────────────────
  * IMPORTANT — this is NOT authentication.
@@ -17,7 +17,6 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { neuralSphere } from './ambient.js';
 import { icon } from './icons.js';
 import { Role, setRole } from './role.js';
 import { el } from './util.js';
@@ -61,19 +60,17 @@ function liquidField({ id, label, type, placeholder, iconName, autocomplete, val
     value,
     required: true
   });
-  const node = el('div.liquid-field', {}, [
+  const node = el('div.auth-field', {}, [
     el('label', { for: id, text: label }),
     input,
-    icon(iconName, { size: 17, className: 'liquid-field__icon' })
+    icon(iconName, { size: 16, className: 'auth-field__icon' })
   ]);
   return { node, input };
 }
 
-/** The 3D crystal AI cube used as the product mark. */
-function crystalCube() {
-  return el('div.cube-stage', { 'aria-hidden': 'true' }, [
-    el('div.cube', {}, Array.from({ length: 6 }, () => el('div.cube__face')))
-  ]);
+/** Product mark: the VGC monogram, matching the topbar badge. */
+function brandMark() {
+  return el('div.auth__mark', { 'aria-hidden': 'true' }, [el('span', { text: 'VGC' })]);
 }
 
 /**
@@ -85,9 +82,6 @@ export function presentLogin() {
   if (hasSession()) return Promise.resolve();
 
   return new Promise((resolve) => {
-    const orb = el('canvas.auth__orb', { 'aria-hidden': 'true' });
-    const destroyOrb = neuralSphere(orb);
-
     const name = liquidField({
       id: 'auth-operator',
       label: 'Operator',
@@ -169,7 +163,6 @@ export function presentLogin() {
           const finish = () => {
             if (finished) return;
             finished = true;
-            destroyOrb();
             screen.remove();
             resolve();
           };
@@ -188,7 +181,7 @@ export function presentLogin() {
       'aria-labelledby': 'auth-title'
     }, [
       el('div.auth__brand', {}, [
-        crystalCube(),
+        brandMark(),
         el('h1.auth__title', { id: 'auth-title', text: 'VGC OCR Intelligence' }),
         el('p.auth__subtitle', { text: 'Document Intelligence Operating System' })
       ]),
@@ -200,7 +193,6 @@ export function presentLogin() {
     ]);
 
     const screen = el('div.auth', {}, [
-      orb,
       card,
       el('p.auth__footnote', { text: 'VGC Group · AI Document Intelligence Platform' })
     ]);

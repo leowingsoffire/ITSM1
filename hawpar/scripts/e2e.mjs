@@ -390,26 +390,44 @@ try {
   /* ── Ingest journey ─────────────────────────────────────────────────── */
   await goto(page, 'ingest');
   const beforeCount = await page.evaluate(async () => (await (await fetch('/api/documents?pageSize=1')).json()).total);
-  await page.evaluate(async () => {
-    await fetch('/api/samples/run', {
+  const acceptedIds = await page.evaluate(async () => {
+    const response = await fetch('/api/samples/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sampleIds: ['sample-invoice', 'sample-po'] })
     });
+    return (await response.json()).accepted.map((doc) => doc.id);
   });
-  await page.waitForFunction(
-    (previous) =>
-      fetch('/api/documents?pageSize=1')
-        .then((response) => response.json())
-        .then((body) => body.total > previous),
-    beforeCount,
-    { timeout: 60000 }
-  );
-  await page.waitForFunction(
-    () => fetch('/api/pipeline/status').then((r) => r.json()).then((s) => s.queueDepth === 0 && s.activeWorkers === 0),
-    null,
-    { timeout: 90000 }
-  );
+  // Wait on each ingested document reaching a terminal status, not on
+  // /api/pipeline/status: the pipeline gauge is in-process, so a multi-node
+  // deployment can report idle while another instance is still working.
+  // The poll runs through page.evaluate (which awaits promises) — a
+  // waitForFunction predicate that returns a promise resolves immediately,
+  // because the pending promise object itself is truthy.
+  {
+    const TERMINAL = ['completed', 'needs-review', 'approved', 'rejected', 'failed'];
+    const deadline = Date.now() + 180000;
+    let pending = [...acceptedIds];
+    while (pending.length > 0) {
+      if (Date.now() > deadline) {
+        throw new Error(`Ingested documents never reached a terminal status: ${pending.join(', ')}`);
+      }
+      await page.waitForTimeout(2000);
+      const statuses = await page.evaluate(
+        (ids) =>
+          Promise.all(
+            ids.map((id) =>
+              fetch(`/api/documents/${encodeURIComponent(id)}`)
+                .then((response) => response.json())
+                .then((doc) => doc?.status ?? 'unknown')
+                .catch(() => 'unknown')
+            )
+          ),
+        pending
+      );
+      pending = pending.filter((_, index) => !TERMINAL.includes(statuses[index]));
+    }
+  }
   const afterCount = await page.evaluate(async () => (await (await fetch('/api/documents?pageSize=1')).json()).total);
   ok('ingest creates and processes new documents', afterCount > beforeCount, `${beforeCount} → ${afterCount}`);
 
@@ -630,9 +648,11 @@ try {
   }
 
   /* ── Document detail keeps working (regression) ─────────────────────── */
-  const documentId = await page.evaluate(
-    async () => (await (await fetch('/api/documents?pageSize=1')).json()).items[0].id
-  );
+  // Assert on a document this suite ingested itself: on a live shared
+  // deployment other sessions upload documents at any moment, and a foreign
+  // record can legitimately be mid-pipeline (placeholder view) or carry no
+  // scored fields (empty assurance tab), which would fail these checks.
+  const documentId = acceptedIds[0];
   await page.evaluate((id) => {
     location.hash = `#/documents/${id}`;
   }, documentId);

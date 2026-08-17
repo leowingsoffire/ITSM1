@@ -1,13 +1,10 @@
 /**
  * Application shell: hash routing, chrome updates and global wiring.
  */
-import { mountAmbient, mountParallax } from './ambient.js';
 import { ApiError } from './api.js';
 import { mountCopilot } from './copilot.js';
-import { mountCursor } from './cursor.js';
 import { icon } from './icons.js';
 import { clearSession, presentLogin } from './login.js';
-import { mountMotion } from './motion.js';
 import { presentOnboarding } from './onboarding.js';
 import { getRole, Role } from './role.js';
 import { clearTenant, hasWorkspaceChoice, workspaceLabel } from './tenant.js';
@@ -325,9 +322,6 @@ function wireAccountMenu() {
 }
 
 async function main() {
-  // The atmosphere is mounted first so the welcome gate rises out of it.
-  mountAmbient();
-  mountCursor();
   // First-time visitors with no workspace yet see the onboarding wizard
   // before the passphrase gate. Once they have either created a workspace or
   // explicitly declined one, the choice is remembered so they are never asked
@@ -356,9 +350,6 @@ async function main() {
   });
   wireGlobalSearch();
   wireAccountMenu();
-  mountParallax(viewRoot);
-  // Mounted after the shell icons exist so the nav morph can measure them.
-  mountMotion();
 
   try {
     await loadConfig();

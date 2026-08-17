@@ -388,7 +388,7 @@ export function mountCopilot() {
     'aria-label': 'AI Copilot',
     'aria-hidden': 'true'
   }, [
-    el('header.copilot__header.q-shimmer', {}, [
+    el('header.copilot__header', {}, [
       avatar,
       el('div.copilot__title', {}, [
         el('strong', { text: 'VGC Copilot' }),
