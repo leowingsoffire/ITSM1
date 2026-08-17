@@ -13,13 +13,29 @@ const ROUTES = process.env.SHOT_ROUTES?.split(',') ?? [
   'dashboard', 'ingest', 'documents', 'workflows', 'agents', 'accuracy',
   'review', 'claims', 'search', 'azure', 'cost', 'blueprint', 'settings'
 ];
+const PRESETS = [
+  { name: 'desktop', width: 1440, height: 900 },
+  { name: 'tablet', width: 834, height: 1112 },
+  { name: 'mobile', width: 390, height: 844 }
+];
+/*
+ * SHOT_VIEWPORT selects a preset by name; SHOT_WIDTH / SHOT_HEIGHT override its
+ * dimensions. Naming a preset without also setting both dimensions used to
+ * produce a NaN viewport and crash the run.
+ */
 const VIEWPORTS = process.env.SHOT_VIEWPORT
-  ? [{ name: process.env.SHOT_VIEWPORT, width: Number(process.env.SHOT_WIDTH), height: Number(process.env.SHOT_HEIGHT) }]
-  : [
-      { name: 'desktop', width: 1440, height: 900 },
-      { name: 'tablet', width: 834, height: 1112 },
-      { name: 'mobile', width: 390, height: 844 }
-    ];
+  ? [(() => {
+      const name = process.env.SHOT_VIEWPORT;
+      const preset = PRESETS.find((entry) => entry.name === name) ?? PRESETS[0];
+      const width = Number(process.env.SHOT_WIDTH);
+      const height = Number(process.env.SHOT_HEIGHT);
+      return {
+        name,
+        width: Number.isFinite(width) && width > 0 ? width : preset.width,
+        height: Number.isFinite(height) && height > 0 ? height : preset.height
+      };
+    })()]
+  : PRESETS;
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: CHROMIUM_EXE });

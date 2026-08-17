@@ -346,6 +346,24 @@ az webapp deploy --resource-group rg-hawpar-docai --name <webAppName> `
 dependencies during deployment. A large upload can outlast the CLI's polling window and report a 504 while the
 server-side build is still running — check `az webapp log deployment show` before retrying.
 
+> **Zip deploy adds and overwrites — it never deletes.** A file you removed from the repository stays in
+> `wwwroot` and keeps being served, and `--clean true` does not reliably change that. After a release that
+> deletes files, remove them explicitly, or the deployment silently drifts from the source:
+>
+> ```powershell
+> [xml]$p = az webapp deployment list-publishing-profiles -g <rg> -n <webAppName> --xml
+> $prof = $p.publishData.publishProfile | Where-Object { $_.publishMethod -eq 'MSDeploy' } | Select-Object -First 1
+> $pair = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($prof.userName):$($prof.userPWD)"))
+> $hdr  = @{ Authorization = "Basic $pair"; 'If-Match' = '*' }
+> $base = "https://<webAppName>.scm.azurewebsites.net/api/vfs/site/wwwroot"
+>
+> # list what is actually deployed, then delete what should no longer be there
+> Invoke-RestMethod "$base/src/public/css/" -Headers $hdr | Select-Object name, size
+> Invoke-WebRequest  "$base/src/public/css/<stale-file>" -Headers $hdr -Method Delete
+> ```
+>
+> Note the path: static assets live under `site/wwwroot/src/public`, not `site/wwwroot`.
+
 Verify with `https://<webAppName>.azurewebsites.net/api/health`. `engine` reports `azure` once the
 `Cognitive Services User` role assignment has propagated; until then the platform degrades to the offline
 engine and records the reason on each document rather than failing the request.
