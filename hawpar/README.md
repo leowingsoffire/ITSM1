@@ -8,7 +8,7 @@ statements — then runs them through an **eleven-agent orchestration mesh**, ve
 against independent evidence, instantiates the **business workflow** that owns the document, and routes only
 genuine exceptions to a human.
 
-The bundled demonstration corpus models a Haw Par Corporation-style operational document set (Tiger Balm
+The bundled demonstration corpus models a VGC Corporation-style operational document set (Tiger Balm
 healthcare, leisure, property and investments) so the platform can be exercised end-to-end with real,
 generated PDFs and real business rules at zero Azure spend.
 
@@ -43,7 +43,7 @@ Azure AI Document Intelligence is priced **per page**, so the model you choose i
 
 ### Signed-off reference profile — **S$1,690 / month**
 
-The **Cost & Value** screen opens on the profile below, which is the agreed Haw Par run-rate. Every
+The **Cost & Value** screen opens on the profile below, which is the agreed VGC run-rate. Every
 assumption is adjustable, and the budget meter reports live variance against S$1,690.
 
 | Assumption | Value |
@@ -310,10 +310,10 @@ see the note in `src/public/js/util.js` before adding a `setAttribute('style')`.
 ## Deploying to Azure
 
 ```powershell
-az group create --name rg-hawpar-docai --location southeastasia
+az group create --name rg-vgc-docai --location southeastasia
 
 az deployment group create `
-  --resource-group rg-hawpar-docai `
+  --resource-group rg-vgc-docai `
   --template-file infra/main.bicep `
   --parameters infra/main.parameters.json
 ```
@@ -338,7 +338,7 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item src, scripts, worker, package.json, package-lock.json, README.md -Destination $stage -Recurse
 Compress-Archive -Path "$stage\*" -DestinationPath "$env:TEMP\vgc-deploy.zip" -Force
 
-az webapp deploy --resource-group rg-hawpar-docai --name <webAppName> `
+az webapp deploy --resource-group rg-vgc-docai --name <webAppName> `
   --src-path "$env:TEMP\vgc-deploy.zip" --type zip
 ```
 

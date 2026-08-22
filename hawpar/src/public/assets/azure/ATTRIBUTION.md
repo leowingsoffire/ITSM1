@@ -21,7 +21,7 @@ In this prototype they appear only in the **Solution Blueprint** architecture
 diagram and the **Cost & Value** breakdown, purely to identify which Azure
 service each component or line item maps to.
 
-All logos remain the property of Microsoft Corporation. Haw Par Corporation and
+All logos remain the property of Microsoft Corporation. VGC Corporation and
 this prototype claim no ownership of them.
 
 ## Files

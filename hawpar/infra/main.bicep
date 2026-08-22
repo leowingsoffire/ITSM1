@@ -1,10 +1,10 @@
 // =============================================================================
-// Haw Par Corporation — AI Document Intelligence Platform
+// VGC Corporation — AI Document Intelligence Platform
 // Cost-optimised, managed-identity-first Azure deployment.
 //
-//   az group create --name rg-hawpar-docai --location southeastasia
+//   az group create --name rg-vgc-docai --location southeastasia
 //   az deployment group create \
-//     --resource-group rg-hawpar-docai \
+//     --resource-group rg-vgc-docai \
 //     --template-file infra/main.bicep \
 //     --parameters infra/main.parameters.json
 // =============================================================================
@@ -14,7 +14,7 @@ targetScope = 'resourceGroup'
 @description('Short workload name used to derive resource names.')
 @minLength(3)
 @maxLength(12)
-param workloadName string = 'hawpardoc'
+param workloadName string = 'vgcdocai'
 
 @description('Deployment environment.')
 @allowed(['dev', 'uat', 'prod'])
@@ -47,7 +47,7 @@ param reviewConfidenceThreshold string = '0.80'
 var suffix = uniqueString(resourceGroup().id, workloadName, environmentName)
 var namePrefix = '${workloadName}-${environmentName}'
 var tags = {
-  workload: 'haw-par-ai-document-intelligence'
+  workload: 'vgc-ai-document-intelligence'
   environment: environmentName
   costCentre: 'group-shared-services'
   dataClassification: 'confidential'
@@ -306,7 +306,7 @@ resource availabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   location: 'global'
   tags: tags
   properties: {
-    description: 'Raises when the Haw Par document platform returns server errors.'
+    description: 'Raises when the VGC document platform returns server errors.'
     severity: 2
     enabled: true
     scopes: [webApp.id]

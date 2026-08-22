@@ -13,3 +13,5 @@ Thumbs.db
 .vscode/
 *.zip
 .copilot-azure/
+sample/
+Hawpar-OCR-Extract.xlsx

@@ -45,7 +45,7 @@ export const PRICE_BOOK = Object.freeze({
 });
 
 /**
- * The agreed monthly run-rate for the Haw Par production deployment.
+ * The agreed monthly run-rate for the VGC production deployment.
  * REFERENCE_PROFILE below is sized to land on this figure, and the Cost & Value
  * screen reports live variance against it.
  */
@@ -72,7 +72,7 @@ export const REFERENCE_PROFILE = Object.freeze({
  *
  * Layout (10x the price of Read) is only used for document types where the
  * table structure is genuinely required. Everything else is served by Read plus
- * Haw Par's local rules engine, which costs nothing per page.
+ * VGC's local rules engine, which costs nothing per page.
  */
 const LAYOUT_REQUIRED_TYPES = new Set([
   'supplier_invoice',

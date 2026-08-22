@@ -22,6 +22,7 @@ import intelligenceRoutes from './routes/intelligence.routes.js';
 import onboardingRoutes from './routes/onboarding.routes.js';
 import platformRoutes from './routes/platform.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import templateRoutes from './routes/templates.routes.js';
 
 const PUBLIC_DIR = import.meta.url
   ? path.join(path.dirname(fileURLToPath(import.meta.url)), 'public')
@@ -84,6 +85,7 @@ export function createApp() {
   api.use(intelligenceRoutes);
   api.use(settingsRoutes);
   api.use('/documents', documentRoutes);
+  api.use('/templates', templateRoutes);
 
   app.use('/api', api);
   app.use(notFoundHandler);

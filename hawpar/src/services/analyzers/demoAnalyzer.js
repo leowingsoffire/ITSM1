@@ -142,7 +142,7 @@ export function analyzeWithDemoEngine({ fileName, buffer, typeHint, pageHint }) 
     'This page forms part of the document and is reproduced in full for audit completeness.',
     'Continued from the previous page. Amounts are stated in Singapore dollars unless otherwise indicated.',
     'The information set out above should be read together with the accompanying notes and schedules.',
-    'Internal reference maintained by Haw Par Group Shared Services for document retention purposes.'
+    'Internal reference maintained by VGC Group Shared Services for document retention purposes.'
   ];
   let fillerIndex = 0;
   while (flowed.length < requiredLines) {

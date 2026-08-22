@@ -198,7 +198,7 @@ router.post(
     const accepted = [];
 
     for (const sample of selected) {
-      const seed = `${sample.id}:${request.body?.seed ?? 'hawpar-demo'}`;
+      const seed = `${sample.id}:${request.body?.seed ?? 'vgc-demo'}`;
       const { buffer, mimeType } = await generateSamplePdf(sample.typeId, seed);
       const record = await ingestDocument({
         buffer,
@@ -228,7 +228,7 @@ router.get(
   asyncHandler(async (request, response) => {
     const sample = getSample(request.params.id);
     if (!sample) throw badRequest(`Unknown sample "${request.params.id}".`);
-    const { buffer } = await generateSamplePdf(sample.typeId, `${sample.id}:hawpar-demo`);
+    const { buffer } = await generateSamplePdf(sample.typeId, `${sample.id}:vgc-demo`);
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Content-Disposition', `attachment; filename="${sample.fileName}"`);
     response.send(buffer);

@@ -1,7 +1,7 @@
 /**
  * Operational analytics.
  *
- * Aggregates the processed corpus into the KPIs Haw Par's process owners care
+ * Aggregates the processed corpus into the KPIs VGC's process owners care
  * about: straight-through-processing rate, exception drivers, throughput,
  * extraction quality and realised cost/benefit.
  */

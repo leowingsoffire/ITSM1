@@ -176,6 +176,33 @@ export const api = {
   smtpTest: (body) =>
     request('/api/settings/smtp-test', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
 
+  // ── Template Studio (custom extraction templates) ──────────────────────
+  templatePreview: (file) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return request('/api/templates/preview', { method: 'POST', body: form });
+  },
+  getTemplatePreview: (previewId) => request(`/api/templates/preview/${encodeURIComponent(previewId)}`),
+  parseExcelTemplate: (file) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return request('/api/templates/excel-template', { method: 'POST', body: form });
+  },
+  listTemplates: () => request('/api/templates'),
+  getTemplate: (id) => request(`/api/templates/${encodeURIComponent(id)}`),
+  createTemplate: (body) =>
+    request('/api/templates', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  updateTemplate: (id, patch) =>
+    request(`/api/templates/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch) }),
+  deleteTemplate: (id) => request(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  runTemplate: (id, files) => {
+    const form = new FormData();
+    for (const file of files) form.append('files', file, file.name);
+    return request(`/api/templates/${encodeURIComponent(id)}/run`, { method: 'POST', body: form });
+  },
+  listTemplateRuns: (id) => request(`/api/templates/${encodeURIComponent(id)}/runs`),
+  getTemplateRun: (id, runId) => request(`/api/templates/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`),
+
   // ── Onboarding / workspace provisioning ─────────────────────────────────
   onboardingBusinessTypes: () => request('/api/onboarding/business-types'),
   onboardingCountries: () => request('/api/onboarding/countries'),

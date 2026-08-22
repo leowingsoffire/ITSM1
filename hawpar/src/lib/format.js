@@ -43,7 +43,7 @@ export function addMonths(date, months) {
 }
 
 /**
- * Parses the date formats commonly seen across Haw Par's supplier base.
+ * Parses the date formats commonly seen across VGC's supplier base.
  * @param {string} value
  * @returns {Date|null}
  */

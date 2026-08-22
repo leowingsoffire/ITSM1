@@ -133,7 +133,7 @@ try {
 
   // --- 6. Save indicator behavior ---
   const nameInput = await page.$('.settings-form input[type="text"]');
-  await nameInput.fill('Haw Par Corporation Limited Updated');
+  await nameInput.fill('VGC Corporation Limited Updated');
   await nameInput.dispatchEvent('change');
   const savedText = await page.waitForFunction(() => {
     const el = document.querySelector('.settings-save-indicator');

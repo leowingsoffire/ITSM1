@@ -309,6 +309,61 @@ export function exportDocumentWorkbook(record) {
   };
 }
 
+/**
+ * Builds the .xlsx for a Template Studio run — the customer-supplied Excel
+ * template's header row and column order are preserved exactly, with each
+ * processed document rendered as one row beneath it. Columns the customer
+ * never mapped to an extracted field (or a system token) are left blank
+ * rather than guessed, so the sheet is always safe to hand to finance as-is.
+ * @param {object} template  Template record (`templates.service.js`).
+ * @param {object} run       Run record with `documents[]`.
+ */
+export function exportTemplateRunWorkbook(template, run) {
+  const excelTemplate = template.excelTemplate;
+  const columns = excelTemplate?.columns ?? template.regions.map((region, index) => ({ column: null, index, header: region.label }));
+  const mappings = excelTemplate?.mappings ?? Object.fromEntries(template.regions.map((region, index) => [index, region.key]));
+
+  const headerRow = columns.map((column) => column.header);
+  const rows = [headerRow];
+
+  for (const document of run.documents) {
+    const row = columns.map((column) => {
+      const target = mappings[column.index] ?? null;
+      if (!target) return '';
+      if (target === '__fileName') return document.fileName;
+      if (target === '__processedAt') return document.processedAt ?? '';
+      if (target === '__pageCount') return document.pageCount ?? '';
+      if (target === '__confidence') {
+        const field = document.fields.find((candidate) => candidate.key === target);
+        return field ? field.confidence : '';
+      }
+      const field = document.fields.find((candidate) => candidate.key === target);
+      if (!field) return '';
+      return field.value === null || field.value === undefined ? field.rawText ?? '' : field.value;
+    });
+    rows.push(row);
+  }
+
+  const auditRows = [
+    ['Document', 'Field', 'Extracted Value', 'Confidence', 'Processed At'],
+    ...run.documents.flatMap((document) =>
+      document.fields.map((field) => [document.fileName, field.label, field.displayValue, field.confidence, document.processedAt])
+    )
+  ];
+
+  const workbook = buildWorkbook([
+    { name: excelTemplate?.sheetName ?? 'Extract', rows },
+    { name: 'Extraction Detail', rows: auditRows }
+  ]);
+
+  const safeName = template.name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60) || 'template';
+  return {
+    buffer: workbook,
+    fileName: `${safeName}-run-${run.id.slice(0, 8)}.xlsx`,
+    contentType: XLSX_CONTENT_TYPE
+  };
+}
+
 export function exportCorpusCsv() {
   const records = listAllDocuments().filter((record) => record.fields.length > 0);
   return {

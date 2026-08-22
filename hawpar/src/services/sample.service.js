@@ -1,7 +1,7 @@
 /**
  * Sample document library.
  *
- * Generates genuine PDF files (not fixtures) for each Haw Par document type and
+ * Generates genuine PDF files (not fixtures) for each VGC document type and
  * pushes them through the exact same ingestion path as a customer upload, so a
  * demonstration exercises the real code path end to end.
  */
@@ -112,7 +112,7 @@ export async function generateSamplePdf(typeId, seed) {
   const lines = flattenContent(content);
   const targetPages = Math.min(MAX_SAMPLE_PAGES, Math.max(1, content.pageTarget));
   const filler = [
-    'Continued from the previous page. This document forms part of the Haw Par Group records retention set.',
+    'Continued from the previous page. This document forms part of the VGC Group records retention set.',
     'Amounts are expressed in Singapore dollars unless otherwise indicated. Figures may not add due to rounding.',
     'This page is reproduced in full to preserve the completeness of the original record for audit purposes.',
     'Refer to the accompanying notes and schedules which form an integral part of this document.'
@@ -124,10 +124,10 @@ export async function generateSamplePdf(typeId, seed) {
   }
 
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`${type.name} — Haw Par Corporation (sample)`);
-  pdf.setAuthor('Haw Par AI Document Intelligence Platform');
+  pdf.setTitle(`${type.name} — VGC Corporation (sample)`);
+  pdf.setAuthor('VGC OCR Intelligence Platform');
   pdf.setSubject(`${type.businessUnit} · ${type.process}`);
-  pdf.setProducer('Haw Par AI OCR Prototype');
+  pdf.setProducer('VGC OCR Intelligence');
   pdf.setCreationDate(new Date());
 
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
@@ -138,7 +138,7 @@ export async function generateSamplePdf(typeId, seed) {
   for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
     const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 26, width: PAGE_WIDTH, height: 26, color: BRAND });
-    page.drawText('HAW PAR CORPORATION LIMITED', {
+    page.drawText('VGC CORPORATION LIMITED', {
       x: MARGIN,
       y: PAGE_HEIGHT - 18,
       size: 9,
@@ -188,8 +188,8 @@ export const SAMPLE_LIBRARY = Object.freeze([
   { id: 'sample-bl', typeId: 'bill_of_lading', fileName: 'Bill-of-Lading-ONEY7741203-Export.pdf', description: 'Ocean export B/L with container and vessel details.' },
   { id: 'sample-reg', typeId: 'product_registration', fileName: 'Product-Registration-Licence-Malaysia-NPRA.pdf', description: 'Regulatory product licence with validity dates.' },
   { id: 'sample-tm', typeId: 'trademark_certificate', fileName: 'Trademark-Certificate-TIGER-BALM-Class-5.pdf', description: 'IP registration certificate with renewal tracking.' },
-  { id: 'sample-lease', typeId: 'tenancy_agreement', fileName: 'Tenancy-Agreement-Haw-Par-Centre-Level-5.pdf', description: 'Multi-page lease contract with rent schedule and 12 clauses.' },
-  { id: 'sample-ar', typeId: 'annual_report', fileName: 'Haw-Par-Annual-Report-FY2025-Full.pdf', description: '100+ page annual report with segment tables and audit opinion.' },
+  { id: 'sample-lease', typeId: 'tenancy_agreement', fileName: 'Tenancy-Agreement-VGC-Centre-Level-5.pdf', description: 'Multi-page lease contract with rent schedule and 12 clauses.' },
+  { id: 'sample-ar', typeId: 'annual_report', fileName: 'VGC-Annual-Report-FY2025-Full.pdf', description: '100+ page annual report with segment tables and audit opinion.' },
   { id: 'sample-bank', typeId: 'bank_statement', fileName: 'Bank-Statement-UOB-Current-Account.pdf', description: 'Treasury statement with transaction ledger reconciliation.' },
   { id: 'sample-claim', typeId: 'employee_claim', fileName: 'Employee-Expense-Claim-CLM-2026-40218.pdf', description: 'HR expense claim with policy cap validation.' },
   { id: 'sample-mkt-claim-pop', typeId: 'marketing_claim', fileName: 'pop-us-summer-Distributor-A&P-Claim-MKT-CLM-2026-US-0412.pdf', description: 'POP (US) distributor A&P claim (A6) — carries date, amount, A&P-code and product-summation exceptions.' },

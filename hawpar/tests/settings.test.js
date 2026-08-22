@@ -151,11 +151,11 @@ describe('settings API', () => {
   test('should_query_the_real_acra_registry_or_fail_honestly_without_fabricating_data', async () => {
     // Network-tolerant: either a real result set comes back from data.gov.sg,
     // or the route reports a clear, honest failure — it must never invent data.
-    const response = await get('/settings/acra-lookup?q=Haw Par');
+    const response = await get('/settings/acra-lookup?q=VGC');
     assert.ok(response.status === 200 || response.status === 400);
     const payload = await response.json();
     if (response.status === 200) {
-      assert.equal(payload.query, 'Haw Par');
+      assert.equal(payload.query, 'VGC');
       assert.ok(Array.isArray(payload.candidates));
     } else {
       assert.ok(payload.error?.message?.length > 0);

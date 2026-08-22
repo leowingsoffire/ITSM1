@@ -136,7 +136,7 @@ describe('document lifecycle', () => {
     const response = await fetch(`${baseUrl}/documents/${documentId}/fields/${target.key}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: 'Corrected By Reviewer', actor: 'tester@hawpar.com' })
+      body: JSON.stringify({ value: 'Corrected By Reviewer', actor: 'tester@vgc.com' })
     });
 
     assert.equal(response.status, 200);
@@ -159,7 +159,7 @@ describe('document lifecycle', () => {
     const payload = await (await postJson(`/documents/${documentId}/decision`, {
       decision: 'approve',
       note: 'Verified against the supplier portal.',
-      actor: 'tester@hawpar.com'
+      actor: 'tester@vgc.com'
     })).json();
 
     assert.equal(payload.status, 'approved');
@@ -215,7 +215,7 @@ describe('large document handling', () => {
   test('should_process_an_annual_report_of_more_than_one_hundred_pages', async () => {
     const { buffer, mimeType } = await generateSamplePdf('annual_report', 'integration-large');
     const form = new FormData();
-    form.append('files', new Blob([buffer], { type: mimeType }), 'Haw-Par-Annual-Report-Integration.pdf');
+    form.append('files', new Blob([buffer], { type: mimeType }), 'VGC-Annual-Report-Integration.pdf');
 
     const response = await fetch(`${baseUrl}/documents`, { method: 'POST', body: form });
     assert.equal(response.status, 202);

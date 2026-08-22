@@ -41,7 +41,7 @@ async function main() {
   });
 
   for (const sample of SAMPLE_LIBRARY) {
-    const { buffer, mimeType } = await generateSamplePdf(sample.typeId, `${sample.id}:hawpar-demo`);
+    const { buffer, mimeType } = await generateSamplePdf(sample.typeId, `${sample.id}:vgc-demo`);
     await ingestDocument({
       buffer,
       fileName: sample.fileName,

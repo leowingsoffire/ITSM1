@@ -416,7 +416,7 @@ button { font-family: inherit; font-size: inherit; }
 }
 .btn:hover { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn:disabled { opacity: 0.8; cursor: not-allowed; transform: none; }
 .btn--primary { background: var(--accent); color: #fff; }
 .btn--primary:hover { background: var(--accent-strong); }
 .btn--accent { background: var(--accent); color: #fff; }
@@ -687,6 +687,37 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 .field-row__value { display: flex; gap: 6px; align-items: center; }
 .field-row__value input { flex: 1; font-family: var(--mono); font-size: 12.5px; }
 .field-row__raw { font-size: 11px; color: var(--slate-500); font-family: var(--mono); }
+
+/* ---------- Template Studio (custom extraction training) ---------- */
+.dropzone--compact { padding: 22px 18px; }
+.template-canvas-wrap {
+  background: var(--slate-100); padding: 14px; border-radius: var(--radius);
+  /* align-items must NOT be the flex default (stretch): stretching the SVG to
+     the wrapper's cross-axis height breaks its viewBox aspect ratio, which
+     letterboxes the rendered page and desyncs pointFromEvent()'s drag
+     coordinates (computed from the outer element's bounding box) from the
+     actual visible content. */
+  display: flex; justify-content: center; align-items: flex-start; overflow: auto; max-height: 620px;
+}
+.template-canvas { max-width: 720px; cursor: crosshair; }
+.template-region { stroke-width: 1.6; }
+.template-region-label { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+.template-capture { cursor: crosshair; touch-action: none; }
+.template-draw-preview { fill: rgba(37, 99, 235, 0.14); stroke: var(--navy-600); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.template-region-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.template-region-list li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid var(--slate-200); border-radius: var(--radius-sm); background: var(--surface);
+}
+.template-region-list__label { font-weight: 650; font-size: 13px; }
+.template-region-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.template-region-form {
+  display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end; padding: 12px; margin-top: 10px; border: 1px solid var(--navy-600); border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.template-region-form .row { grid-column: 1 / -1; }
+
 
 /*
  * Assurance evidence.

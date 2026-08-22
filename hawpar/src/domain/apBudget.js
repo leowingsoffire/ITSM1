@@ -1,7 +1,7 @@
 /**
  * Advertising & Promotion (A&P) budget reference data.
  *
- * Haw Par allocates a fixed annual A&P budget across nine spend categories,
+ * VGC allocates a fixed annual A&P budget across nine spend categories,
  * A1–A9. Distributors charge their marketing claims against one of these codes,
  * so validating a claim means (a) confirming the code is consistent across every
  * document and (b) checking the claimed amount against the remaining budget for

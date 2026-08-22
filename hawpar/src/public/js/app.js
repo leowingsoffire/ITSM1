@@ -27,6 +27,9 @@ const ROUTES = Object.freeze({
   search: () => import('./views/search.js'),
   cost: () => import('./views/cost.js'),
   blueprint: () => import('./views/blueprint.js'),
+  templates: () => import('./views/templates.js'),
+  'template-editor': () => import('./views/template-editor.js'),
+  'template-detail': () => import('./views/template-detail.js'),
   settings: () => import('./views/settings.js')
 });
 
@@ -73,6 +76,15 @@ function parseHash() {
   }
   if (name === 'workflows' && rest[0]) {
     return { route: 'workflow-detail', navKey: 'workflows', params: { id: decodeURIComponent(rest[0]) } };
+  }
+  if (name === 'templates' && rest[0] === 'new') {
+    return { route: 'template-editor', navKey: 'templates', params: {} };
+  }
+  if (name === 'templates' && rest[0] === 'edit' && rest[1]) {
+    return { route: 'template-editor', navKey: 'templates', params: { id: decodeURIComponent(rest[1]) } };
+  }
+  if (name === 'templates' && rest[0]) {
+    return { route: 'template-detail', navKey: 'templates', params: { id: decodeURIComponent(rest[0]) } };
   }
   if (name === 'search') {
     return { route: 'search', navKey: 'search', params: { q: rest[0] ? decodeURIComponent(rest[0]) : '' } };

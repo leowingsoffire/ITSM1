@@ -7,6 +7,7 @@ import { logger } from './lib/logger.js';
 import { flushPendingWrites, initialiseStore } from './services/store.service.js';
 import { initialiseSettingsStore } from './services/settings.service.js';
 import { initialiseTenantRegistry } from './services/tenant.service.js';
+import { initialiseTemplateStore } from './services/templates.service.js';
 
 const SHUTDOWN_GRACE_MS = 10000;
 
@@ -14,6 +15,7 @@ async function main() {
   await initialiseTenantRegistry();
   await initialiseStore();
   await initialiseSettingsStore();
+  await initialiseTemplateStore();
 
   const app = createApp();
   const server = app.listen(config.port, () => {

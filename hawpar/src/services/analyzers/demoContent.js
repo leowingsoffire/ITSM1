@@ -1,7 +1,7 @@
 /**
  * Demo document content generators.
  *
- * Produces realistic, deterministic Haw Par business documents so the platform can
+ * Produces realistic, deterministic VGC business documents so the platform can
  * be demonstrated end-to-end without incurring any Azure cost. Each generator
  * returns a neutral content structure that the demo analyser paginates and
  * converts into an OCR-style analysis result.
@@ -89,7 +89,7 @@ function buildSupplierInvoice(rng) {
   para(doc, `${supplier.country} · Company Registration ${supplier.uen}`);
   heading(doc, 'Bill To');
   para(doc, rng.pick(GROUP_ENTITIES));
-  para(doc, '180 Clemenceau Avenue #02-01, Haw Par Centre, Singapore 239922');
+  para(doc, '180 Clemenceau Avenue #02-01, VGC Centre, Singapore 239922');
 
   heading(doc, 'Invoice Details');
   kv(doc, 'Invoice Number', `INV-${rng.int(100000, 999999)}`);
@@ -117,7 +117,7 @@ function buildSupplierInvoice(rng) {
   });
 
   heading(doc, 'Summary');
-  // Foreign-currency invoices are the ones re-keyed by hand at Haw Par, so they
+  // Foreign-currency invoices are the ones re-keyed by hand at VGC, so they
   // carry a transcription discrepancy between the printed total and the line
   // items — exactly the exception the rules engine catches before payment.
   const printedTotal = taxable ? total : Number((total + rng.float(3.5, 48.9, 2)).toFixed(2));
@@ -154,13 +154,13 @@ function buildPurchaseOrder(rng) {
   const total = lines.reduce((sum, row) => sum + Number(row[6].replace(/,/g, '')), 0);
 
   doc.blocks.push(text(Role.TITLE, 'PURCHASE ORDER'));
-  para(doc, 'Haw Par Corporation Limited — Group Procurement');
+  para(doc, 'VGC Corporation Limited — Group Procurement');
   heading(doc, 'Order Header');
   kv(doc, 'Purchase Order No', `HP-PO-2026-${rng.int(1000, 9999)}`);
   kv(doc, 'PO Date', formatDate(orderDate));
   kv(doc, 'Supplier', supplier.name);
   kv(doc, 'Delivery Date', formatDate(deliveryDate));
-  kv(doc, 'Ship To', 'Haw Par Technocentre, 401 Commonwealth Drive, Singapore 149598');
+  kv(doc, 'Ship To', 'VGC Technocentre, 401 Commonwealth Drive, Singapore 149598');
   kv(doc, 'Currency', currency);
   kv(doc, 'Incoterms', rng.pick(['DDP Singapore', 'FOB Port Klang', 'CIF Singapore', 'EXW Works']));
 
@@ -174,7 +174,7 @@ function buildPurchaseOrder(rng) {
   heading(doc, 'Authorisation');
   kv(doc, 'Order Value', `${currency} ${formatMoney(total)}`);
   kv(doc, 'Approved By', rng.pick(STAFF));
-  para(doc, 'This order is subject to Haw Par Group standard purchasing terms and conditions (Rev. 2025-04).');
+  para(doc, 'This order is subject to VGC Group standard purchasing terms and conditions (Rev. 2025-04).');
   return doc;
 }
 
@@ -244,7 +244,7 @@ function buildCertificateOfAnalysis(rng) {
   });
 
   doc.blocks.push(text(Role.TITLE, 'CERTIFICATE OF ANALYSIS'));
-  para(doc, 'Haw Par Healthcare Limited — Quality Control Laboratory, Singapore');
+  para(doc, 'VGC Healthcare Limited — Quality Control Laboratory, Singapore');
   heading(doc, 'Batch Identification');
   kv(doc, 'Product', product.name);
   kv(doc, 'Material Code', product.sku);
@@ -291,7 +291,7 @@ function buildBillOfLading(rng) {
   doc.blocks.push(text(Role.TITLE, 'BILL OF LADING'));
   heading(doc, 'Parties');
   kv(doc, 'B/L No', `ONEY${rng.int(1000000, 9999999)}`);
-  kv(doc, 'Shipper', 'Haw Par Healthcare Limited, 401 Commonwealth Drive, Singapore');
+  kv(doc, 'Shipper', 'VGC Healthcare Limited, 401 Commonwealth Drive, Singapore');
   kv(doc, 'Consignee', `${rng.pick(['Regional Distributor', 'Health Care Trading', 'Pacific Pharma'])} ${rng.pick(MARKETS)} Pte Ltd`);
   kv(doc, 'Notify Party', 'Same as consignee');
 
@@ -331,8 +331,8 @@ function buildProductRegistration(rng) {
   kv(doc, 'Dosage Form', 'Topical ointment');
   kv(doc, 'Country', country);
   kv(doc, 'Authority', REGULATORS[country] ?? 'National Health Authority');
-  kv(doc, 'Licence Holder', 'Haw Par Healthcare Limited');
-  kv(doc, 'Manufacturing Site', 'Haw Par Technocentre, 401 Commonwealth Drive, Singapore 149598');
+  kv(doc, 'Licence Holder', 'VGC Healthcare Limited');
+  kv(doc, 'Manufacturing Site', 'VGC Technocentre, 401 Commonwealth Drive, Singapore 149598');
   kv(doc, 'Issue Date', formatDate(issueDate));
   kv(doc, 'Valid Until', formatDate(expiryDate));
 
@@ -365,9 +365,9 @@ function buildTrademarkCertificate(rng) {
   para(doc, `Intellectual Property Office of ${country}`);
   heading(doc, 'Mark Particulars');
   kv(doc, 'Trade Mark No', `T${rng.int(10, 99)}${rng.int(10000, 99999)}${rng.pick(['A', 'B', 'C', 'J'])}`);
-  kv(doc, 'Mark', rng.pick(['TIGER BALM', 'TIGER BALM & Device', 'KWAN LOONG', 'HAW PAR', 'TIGER (Leaping Tiger Device)']));
-  kv(doc, 'Proprietor', 'Haw Par Trademark Holdings Pte Ltd');
-  kv(doc, 'Address', '180 Clemenceau Avenue #02-01, Haw Par Centre, Singapore 239922');
+  kv(doc, 'Mark', rng.pick(['TIGER BALM', 'TIGER BALM & Device', 'KWAN LOONG', 'VGC', 'TIGER (Leaping Tiger Device)']));
+  kv(doc, 'Proprietor', 'VGC Trademark Holdings Pte Ltd');
+  kv(doc, 'Address', '180 Clemenceau Avenue #02-01, VGC Centre, Singapore 239922');
   kv(doc, 'Country', country);
   kv(doc, 'Classes', rng.pick(['5', '3, 5', '5, 10', '3, 5, 35']));
   kv(doc, 'Registration Date', formatDate(registrationDate));
@@ -394,7 +394,7 @@ function buildTenancyAgreement(rng) {
   doc.blocks.push(text(Role.TITLE, 'TENANCY AGREEMENT'));
   heading(doc, 'Particulars');
   kv(doc, 'Agreement No', `HP-TA-${rng.int(2025, 2026)}-${rng.int(100, 999)}`);
-  kv(doc, 'Landlord', 'Haw Par Properties (Singapore) Pte Ltd');
+  kv(doc, 'Landlord', 'VGC Properties (Singapore) Pte Ltd');
   kv(doc, 'Tenant', `${rng.pick(['Meridian', 'Crestline', 'Anchorvale', 'Novena', 'Kallang'])} ${rng.pick(['Consulting', 'Technologies', 'Logistics', 'Wellness'])} Pte Ltd`);
   kv(doc, 'Premises', `${property.unit}, ${property.name}, ${property.city}`);
   kv(doc, 'Lettable Area', `${area} sq ft`);
@@ -459,10 +459,10 @@ function buildAnnualReport(rng) {
   const totalEquity = Number((totalAssets * rng.float(0.86, 0.94, 3)).toFixed(1));
   const eps = Number(((netProfit * 1000) / 221100).toFixed(1));
 
-  doc.blocks.push(text(Role.TITLE, `HAW PAR CORPORATION LIMITED — ANNUAL REPORT ${financialYear}`));
+  doc.blocks.push(text(Role.TITLE, `VGC CORPORATION LIMITED — ANNUAL REPORT ${financialYear}`));
   heading(doc, 'Key Financial Highlights');
   kv(doc, 'Financial Year', String(financialYear));
-  kv(doc, 'Company', 'Haw Par Corporation Limited');
+  kv(doc, 'Company', 'VGC Corporation Limited');
   kv(doc, 'Revenue', `SGD ${formatMoney(revenue)} million`);
   kv(doc, 'Profit Before Tax', `SGD ${formatMoney(pbt)} million`);
   kv(doc, 'Net Profit', `SGD ${formatMoney(netProfit)} million`);
@@ -634,7 +634,7 @@ function buildEmployeeClaim(rng) {
   const total = rows.reduce((sum, row) => sum + Number(row[4].replace(/,/g, '')), 0);
 
   doc.blocks.push(text(Role.TITLE, 'EMPLOYEE EXPENSE CLAIM FORM'));
-  para(doc, 'Haw Par Corporation Limited — Human Resources');
+  para(doc, 'VGC Corporation Limited — Human Resources');
   heading(doc, 'Claimant Details');
   kv(doc, 'Claim No', `CLM-2026-${rng.int(10000, 99999)}`);
   kv(doc, 'Employee', employee);
@@ -677,7 +677,7 @@ function buildMarketingClaim(rng, seed) {
   const doc = base(rng.int(2, 3));
 
   doc.blocks.push(text(Role.TITLE, 'MARKETING EXPENSE CLAIM SUMMARY'));
-  para(doc, 'Haw Par Healthcare — Trade Marketing (Advertising & Promotion)');
+  para(doc, 'VGC Healthcare — Trade Marketing (Advertising & Promotion)');
   para(doc, `Distributor co-operative advertising claim for reimbursement under A&P code ${apCode}.`);
 
   heading(doc, 'Claim Details');
@@ -747,7 +747,7 @@ function buildMarketingSupport(rng, seed) {
   if (isLetter) {
     heading(doc, 'Agency Cover Letter');
     para(doc, support.vendor);
-    para(doc, 'Attention: Haw Par Healthcare — Trade Marketing Department');
+    para(doc, 'Attention: VGC Healthcare — Trade Marketing Department');
     heading(doc, 'Reference');
     kv(doc, 'Document Kind', support.kind);
     kv(doc, 'Vendor', support.vendor);

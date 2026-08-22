@@ -511,7 +511,7 @@ export async function render(params) {
   async function decide(decision) {
     try {
       const result = await api.decide(record.id, decision, `${decision === 'approve' ? 'Approved' : 'Rejected'} in the review workspace.`);
-      toast(`Document ${decision}d.`, decision === 'approve' ? 'success' : 'warn');
+      toast(`Document ${decision === 'approve' ? 'approved' : 'rejected'}.`, decision === 'approve' ? 'success' : 'warn');
       paintSummary(result.summary);
       record.status = result.status;
       await refreshCounters();

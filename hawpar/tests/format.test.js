@@ -62,6 +62,6 @@ describe('format helpers', () => {
   });
 
   test('should_title_case_lowercase_input', () => {
-    assert.equal(titleCase('haw par corporation'), 'Haw Par Corporation');
+    assert.equal(titleCase('sunrise logistics group'), 'Sunrise Logistics Group');
   });
 });

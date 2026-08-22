@@ -1,16 +1,16 @@
 /**
- * Reference data used by the demo engine to synthesise realistic Haw Par documents.
+ * Reference data used by the demo engine to synthesise realistic VGC documents.
  * Kept separate from generation logic so business users can review/extend it easily.
  */
 
 export const GROUP_ENTITIES = Object.freeze([
-  'Haw Par Corporation Limited',
-  'Haw Par Healthcare Limited',
-  'Haw Par Tiger Balm Sdn Bhd',
-  'Haw Par Leisure Pte Ltd',
-  'Haw Par Properties (Singapore) Pte Ltd',
-  'Haw Par Trademark Holdings Pte Ltd',
-  'Haw Par Equities Pte Ltd'
+  'VGC Corporation Limited',
+  'VGC Healthcare Limited',
+  'VGC Tiger Balm Sdn Bhd',
+  'VGC Leisure Pte Ltd',
+  'VGC Properties (Singapore) Pte Ltd',
+  'VGC Trademark Holdings Pte Ltd',
+  'VGC Equities Pte Ltd'
 ]);
 
 export const SUPPLIERS = Object.freeze([
@@ -25,14 +25,14 @@ export const SUPPLIERS = Object.freeze([
 ]);
 
 export const PRODUCTS = Object.freeze([
-  { name: 'Tiger Balm White Ointment 19g', sku: 'TB-WO-019', uom: 'JAR' },
-  { name: 'Tiger Balm Red Ointment 30g', sku: 'TB-RO-030', uom: 'JAR' },
-  { name: 'Tiger Balm Neck & Shoulder Rub 50g', sku: 'TB-NS-050', uom: 'TUBE' },
-  { name: 'Tiger Balm Medicated Plaster (Cool) 10s', sku: 'TB-MP-C10', uom: 'PACK' },
-  { name: 'Tiger Balm Mosquito Repellent Patch 10s', sku: 'TB-MR-P10', uom: 'PACK' },
-  { name: 'Tiger Balm Active Muscle Rub 60g', sku: 'TB-AM-060', uom: 'TUBE' },
-  { name: 'Tiger Balm Joint Rub 50g', sku: 'TB-JR-050', uom: 'TUBE' },
-  { name: 'Kwan Loong Medicated Oil 57ml', sku: 'KL-MO-057', uom: 'BOTTLE' }
+  { name: 'VGC Balm White Ointment 19g', sku: 'TB-WO-019', uom: 'JAR' },
+  { name: 'VGC Balm Red Ointment 30g', sku: 'TB-RO-030', uom: 'JAR' },
+  { name: 'VGC Balm Neck & Shoulder Rub 50g', sku: 'TB-NS-050', uom: 'TUBE' },
+  { name: 'VGC Balm Medicated Plaster (Cool) 10s', sku: 'TB-MP-C10', uom: 'PACK' },
+  { name: 'VGC Balm Mosquito Repellent Patch 10s', sku: 'TB-MR-P10', uom: 'PACK' },
+  { name: 'VGC Balm Active Muscle Rub 60g', sku: 'TB-AM-060', uom: 'TUBE' },
+  { name: 'VGC Balm Joint Rub 50g', sku: 'TB-JR-050', uom: 'TUBE' },
+  { name: 'VGC Medicated Oil 57ml', sku: 'KL-MO-057', uom: 'BOTTLE' }
 ]);
 
 export const RAW_MATERIALS = Object.freeze([
@@ -94,10 +94,10 @@ export const REGULATORS = Object.freeze({
 });
 
 export const PROPERTIES = Object.freeze([
-  { name: 'Haw Par Centre, 180 Clemenceau Avenue', city: 'Singapore', unit: '#05-01' },
-  { name: 'Haw Par Technocentre, 401 Commonwealth Drive', city: 'Singapore', unit: '#03-12' },
-  { name: 'Haw Par Glass Tower, 178 Clemenceau Avenue', city: 'Singapore', unit: '#11-04' },
-  { name: 'Menara Haw Par, Jalan Sultan Ismail', city: 'Kuala Lumpur', unit: 'Level 8' }
+  { name: 'VGC Centre, 180 Clemenceau Avenue', city: 'Singapore', unit: '#05-01' },
+  { name: 'VGC Technocentre, 401 Commonwealth Drive', city: 'Singapore', unit: '#03-12' },
+  { name: 'VGC Glass Tower, 178 Clemenceau Avenue', city: 'Singapore', unit: '#11-04' },
+  { name: 'Menara VGC, Jalan Sultan Ismail', city: 'Kuala Lumpur', unit: 'Level 8' }
 ]);
 
 export const BANKS = Object.freeze([
@@ -146,7 +146,7 @@ export const SINGAPORE_GST_RATE = 0.09;
 /**
  * Company-registration formats by jurisdiction.
  *
- * Haw Par buys across ASEAN and North Asia, so an identifier check that only
+ * VGC buys across ASEAN and North Asia, so an identifier check that only
  * understands the Singapore UEN would reject every legitimate foreign supplier
  * registration. Each entry states the issuing authority so a reviewer can see
  * *why* an identifier was accepted rather than being told only that it "looks
