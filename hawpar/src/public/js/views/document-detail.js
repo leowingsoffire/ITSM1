@@ -18,7 +18,7 @@ import {
   svgEl,
   toast
 } from '../util.js';
-import { card, dataTable, emptyState, pageHeader, stageStrip, tabGroup } from './common.js';
+import { card, confirmDialog, dataTable, emptyState, pageHeader, stageStrip, tabGroup } from './common.js';
 
 const VIEWER_WIDTH = 1000;
 const LOW_CONFIDENCE_LINE = 0.85;
@@ -430,8 +430,33 @@ export async function render(params) {
   }
 
   if (record.status === 'failed') {
+    const removeFailedDocument = async () => {
+      const confirmed = await confirmDialog({
+        title: 'Delete this document?',
+        message: `"${record.fileName}" failed processing and will be permanently removed. This cannot be undone.`,
+        confirmLabel: 'Delete document',
+        tone: 'danger'
+      });
+      if (!confirmed) return;
+      try {
+        await api.deleteDocument(record.id);
+        toast('Document deleted.', 'success');
+        await refreshCounters();
+        location.hash = '#/documents';
+      } catch (error) {
+        toast(error instanceof ApiError ? error.message : 'Could not delete the document.', 'error');
+      }
+    };
     node.append(
-      pageHeader({ title: record.fileName, icon: 'alert', subtitle: 'Processing failed.', actions: [el('a.btn.btn--ghost', { href: '#/documents', text: 'Back to library' })] }),
+      pageHeader({
+        title: record.fileName,
+        icon: 'alert',
+        subtitle: 'Processing failed.',
+        actions: [
+          el('a.btn.btn--ghost', { href: '#/documents', text: 'Back to library' }),
+          el('button.btn.btn--danger', { type: 'button', text: 'Delete', on: { click: removeFailedDocument } })
+        ]
+      }),
       card({ title: 'Failure detail', icon: 'alert', tone: 'crimson', body: el('div', {}, [
         el('p', { text: record.error?.message ?? 'Unknown error.' }),
         stageStrip(record.stages)
@@ -520,6 +545,24 @@ export async function render(params) {
     }
   }
 
+  async function removeDocument() {
+    const confirmed = await confirmDialog({
+      title: 'Delete this document?',
+      message: `"${record.fileName}" and all of its extracted data will be permanently removed. This cannot be undone.`,
+      confirmLabel: 'Delete document',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
+    try {
+      await api.deleteDocument(record.id);
+      toast('Document deleted.', 'success');
+      await refreshCounters();
+      location.hash = '#/documents';
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : 'Could not delete the document.', 'error');
+    }
+  }
+
   node.append(
     pageHeader({
       title: record.fileName,
@@ -528,7 +571,8 @@ export async function render(params) {
       actions: [
         el('a.btn.btn--ghost', { href: `/api/documents/${encodeURIComponent(record.id)}/export.xlsx`, text: 'Export .xlsx' }),
         el('button.btn.btn--danger', { type: 'button', text: 'Reject', on: { click: () => decide('reject') } }),
-        el('button.btn.btn--success', { type: 'button', text: 'Approve', on: { click: () => decide('approve') } })
+        el('button.btn.btn--success', { type: 'button', text: 'Approve', on: { click: () => decide('approve') } }),
+        el('button.btn.btn--ghost', { type: 'button', text: 'Delete', on: { click: removeDocument } })
       ]
     }),
     summaryBar,

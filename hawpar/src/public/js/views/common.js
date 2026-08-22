@@ -285,3 +285,60 @@ export function stageStrip(stages = []) {
     )
   );
 }
+
+/**
+ * An accessible confirmation dialog for destructive actions (delete, discard,
+ * etc.). Built on the native `<dialog>` element so focus trapping, Escape-to-
+ * close and backdrop semantics are provided by the browser rather than
+ * hand-rolled — the one thing this app did not yet have anywhere, even though
+ * several destructive API calls (e.g. deleting a template) had no UI trigger
+ * because there was nothing safe to gate them behind.
+ *
+ * @param {object} input
+ * @param {string} input.title
+ * @param {string} input.message
+ * @param {string} [input.confirmLabel]
+ * @param {string} [input.cancelLabel]
+ * @param {'default'|'danger'} [input.tone]
+ * @returns {Promise<boolean>} resolves true if confirmed, false if cancelled/dismissed.
+ */
+export function confirmDialog({ title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', tone = 'danger' } = {}) {
+  return new Promise((resolve) => {
+    const dialog = el('dialog.confirm-dialog', { 'aria-label': title }, [
+      el('form', { method: 'dialog' }, [
+        el('h2', { text: title }),
+        el('p', { text: message }),
+        el('div.confirm-dialog__actions', {}, [
+          el('button.btn.btn--ghost', { type: 'button', text: cancelLabel, autofocus: tone !== 'danger' }),
+          el(`button.btn.${tone === 'danger' ? 'btn--danger' : 'btn--primary'}`, {
+            type: 'button',
+            text: confirmLabel,
+            autofocus: tone === 'danger' ? false : undefined
+          })
+        ])
+      ])
+    ]);
+
+    const [cancelButton, confirmButton] = dialog.querySelectorAll('button');
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+      dialog.close();
+      dialog.remove();
+    };
+
+    cancelButton.addEventListener('click', () => finish(false));
+    confirmButton.addEventListener('click', () => finish(true));
+    dialog.addEventListener('cancel', () => finish(false)); // Escape key
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) finish(false); // backdrop click
+    });
+
+    document.body.append(dialog);
+    dialog.showModal();
+    cancelButton.focus();
+  });
+}
+

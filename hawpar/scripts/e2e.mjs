@@ -705,7 +705,30 @@ try {
   const tabStops = await page.$$eval('.tabs .tab', (nodes) => nodes.filter((n) => n.tabIndex === 0).length);
   ok('the tab strip is a single tab stop', tabStops === 1, `${tabStops} stop(s)`);
 
-  /* ── Accessibility basics ───────────────────────────────────────────── */
+  /* ── Document deletion (with confirm dialog cancel/confirm) ──────────── */
+  {
+    const deleteTargetId = acceptedIds[1] ?? acceptedIds[0];
+    await page.evaluate((id) => {
+      location.hash = `#/documents/${id}`;
+    }, deleteTargetId);
+    await settle(page);
+    await page.click('button:has-text("Delete")');
+    await page.waitForSelector('dialog.confirm-dialog[open]', { timeout: 5000 });
+    await page.click('dialog.confirm-dialog button:has-text("Cancel")');
+    await page.waitForTimeout(200);
+    const stillExists = await fetch(`${BASE}/api/documents/${encodeURIComponent(deleteTargetId)}`).then((r) => r.status);
+    ok('cancelling document delete keeps the document', stillExists === 200, `status=${stillExists}`);
+
+    await page.click('button:has-text("Delete")');
+    await page.waitForSelector('dialog.confirm-dialog[open]', { timeout: 5000 });
+    await page.click('dialog.confirm-dialog button:has-text("Delete document")');
+    await page.waitForFunction(() => location.hash === '#/documents', null, { timeout: 10000 });
+    await settle(page);
+    const deletedStatus = await fetch(`${BASE}/api/documents/${encodeURIComponent(deleteTargetId)}`).then((r) => r.status);
+    ok('confirming document delete removes it and returns to the library', deletedStatus === 404, `status=${deletedStatus}`);
+  }
+
+  /* ── Error handling ─────────────────────────────────────────────────── */
   await goto(page, 'workflows');
   const labelIssues = await page.evaluate(() => {
     const issues = [];

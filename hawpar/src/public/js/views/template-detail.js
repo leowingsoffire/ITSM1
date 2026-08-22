@@ -5,7 +5,7 @@
 import { api, ApiError } from '../api.js';
 import { el, formatTime, toast } from '../util.js';
 import { icon } from '../icons.js';
-import { card, dataTable, emptyState, pageHeader } from './common.js';
+import { card, confirmDialog, dataTable, emptyState, pageHeader } from './common.js';
 
 function dropzoneMulti(onFiles) {
   const input = el('input', {
@@ -175,7 +175,29 @@ export async function render(params) {
       subtitle: template.description || `Trained from ${template.sourceFileName ?? 'a sample document'} · ${template.regions.length} field(s)`,
       actions: [
         el('a.btn.btn--ghost', { href: '#/templates', text: '← All templates' }),
-        el('a.btn.btn--primary', { href: `#/templates/edit/${encodeURIComponent(template.id)}`, text: 'Edit template' })
+        el('a.btn.btn--primary', { href: `#/templates/edit/${encodeURIComponent(template.id)}`, text: 'Edit template' }),
+        el('button.btn.btn--danger', {
+          type: 'button',
+          text: 'Delete template',
+          on: {
+            click: async () => {
+              const confirmed = await confirmDialog({
+                title: 'Delete this template?',
+                message: `"${template.name}" and its ${template.runCount ?? 0} run(s) will be permanently removed. This cannot be undone.`,
+                confirmLabel: 'Delete template',
+                tone: 'danger'
+              });
+              if (!confirmed) return;
+              try {
+                await api.deleteTemplate(template.id);
+                toast('Template deleted.', 'success');
+                location.hash = '#/templates';
+              } catch (error) {
+                toast(error instanceof ApiError ? error.message : 'Could not delete the template.', 'error', 7000);
+              }
+            }
+          }
+        })
       ]
     }),
     card({ title: 'Trained fields', icon: 'target', body: fieldsTable }),

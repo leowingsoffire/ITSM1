@@ -165,6 +165,27 @@ try {
 
   await page.screenshot({ path: artifact('templates-mobile.png'), fullPage: true });
 
+  // --- Delete the template via the confirm dialog (back on desktop) ---
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto(detailHref, { waitUntil: 'load' });
+  await settleUi(page, 'template detail (desktop, before delete)');
+  await page.click('button:has-text("Delete template")');
+  await page.waitForSelector('dialog.confirm-dialog[open]', { timeout: 5000 });
+  // Cancelling must not delete anything.
+  await page.click('dialog.confirm-dialog button:has-text("Cancel")');
+  await page.waitForTimeout(200);
+  const stillOnDetail = await page.evaluate(() => location.hash.startsWith('#/templates/') && !location.hash.includes('new'));
+  ok('cancelling the delete dialog keeps the template', stillOnDetail);
+
+  await page.click('button:has-text("Delete template")');
+  await page.waitForSelector('dialog.confirm-dialog[open]', { timeout: 5000 });
+  await page.click('dialog.confirm-dialog button:has-text("Delete template")');
+  await page.waitForFunction(() => location.hash === '#/templates', null, { timeout: 10000 });
+  await settleUi(page, 'templates list after delete');
+  await page.waitForSelector('.empty, table.data', { timeout: 10000 });
+  const emptyAfterDelete = await page.$('.empty');
+  ok('confirming the delete dialog removes the template and returns to an empty list', Boolean(emptyAfterDelete));
+
   ok('no uncaught page/console errors', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 300));
 } finally {
   await browser.close();
