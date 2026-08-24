@@ -18,6 +18,8 @@ import {
 } from '../services/export.service.js';
 import { ingestDocument } from '../services/ingestion.service.js';
 import { getPipelineStatus, pipelineEvents } from '../services/pipeline.service.js';
+import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
+import { tenantExists } from '../services/tenant.service.js';
 import { SAMPLE_LIBRARY, generateSamplePdf, getSample } from '../services/sample.service.js';
 import { clearAll, createBatch, ensureTenantStoreLoaded, searchFullText, toSummary } from '../services/store.service.js';
 import { listClaims, getClaim, claimsOverview } from '../services/claims.service.js';
@@ -316,8 +318,25 @@ router.delete(
   })
 );
 
-/** GET /api/events — server-sent events for live pipeline progress. */
+/**
+ * GET /api/events — server-sent events for live pipeline progress.
+ *
+ * `EventSource` cannot set custom request headers, so the tenant id that
+ * every other endpoint reads from `x-tenant-id` is passed as `?tenantId=`
+ * instead (see `public/js/store.js`). Every event is filtered to the
+ * requesting tenant so one workspace's live pipeline activity can never leak
+ * into another's — without this, every browser tab (regardless of which
+ * customer workspace it belongs to) would see every other tenant's document
+ * processing events, including document ids it has no access to.
+ */
 router.get('/events', (request, response) => {
+  const requested = String(request.query.tenantId ?? '').trim();
+  const tenantId = requested || DEFAULT_TENANT_ID;
+  if (!tenantExists(tenantId)) {
+    response.status(404).json({ error: `Workspace "${tenantId}" was not found.` });
+    return;
+  }
+
   response.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -327,6 +346,7 @@ router.get('/events', (request, response) => {
   response.write(`event: ready\ndata: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
 
   const onEvent = (payload) => {
+    if ((payload.tenantId ?? DEFAULT_TENANT_ID) !== tenantId) return;
     response.write(`event: pipeline\ndata: ${JSON.stringify(payload)}\n\n`);
   };
   pipelineEvents.on('event', onEvent);

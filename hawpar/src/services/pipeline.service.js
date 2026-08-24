@@ -10,6 +10,7 @@
 import { EventEmitter } from 'node:events';
 import { config } from '../config/index.js';
 import { logger } from '../lib/logger.js';
+import { currentTenantId } from '../lib/tenantContext.js';
 import { getUpload } from './blob.service.js';
 import { runOrchestration } from './agents/orchestrator.service.js';
 import { selectModelForType } from './cost.service.js';
@@ -38,7 +39,7 @@ let failedCount = 0;
 let agentStepCount = 0;
 
 function emit(event, payload) {
-  pipelineEvents.emit('event', { event, at: new Date().toISOString(), ...payload });
+  pipelineEvents.emit('event', { event, at: new Date().toISOString(), tenantId: currentTenantId(), ...payload });
 }
 
 function newStages() {

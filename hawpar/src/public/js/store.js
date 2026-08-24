@@ -3,6 +3,7 @@
  * A tiny observable store keeps views decoupled from each other.
  */
 import { api } from './api.js';
+import { getTenantId } from './tenant.js';
 
 const MAX_ACTIVITY_ENTRIES = 60;
 
@@ -96,7 +97,11 @@ const STAGE_LABELS = Object.freeze({
 
 /** Opens the SSE channel and keeps it alive across transient disconnects. */
 export function connectEventStream() {
-  const source = new EventSource('/api/events');
+  // EventSource cannot set the x-tenant-id header every other API call uses,
+  // so the active workspace is passed as a query param instead — the server
+  // filters the shared event bus to this tenant alone (see platform.routes.js).
+  const tenantId = getTenantId();
+  const source = new EventSource(`/api/events${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`);
 
   source.addEventListener('ready', () => {
     state.connected = true;
