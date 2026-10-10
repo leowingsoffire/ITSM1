@@ -52,7 +52,7 @@
         <div class="topbar__meta">
           <span class="pill pill--engine" id="engine-badge" title="Active analysis engine">Loading…</span>
           <span class="pill pill--queue" id="queue-badge" title="Pipeline queue depth">Queue 0</span>
-          <button class="avatar" id="sign-out" type="button" title="Account and workspace">VG</button>
+          <button class="avatar" id="sign-out" type="button" title="Account and workspace" aria-label="Account menu"></button>
         </div>
       </header>
 
@@ -72,6 +72,7 @@
           <li><a class="nav-item" href="#/blueprint" data-view="blueprint" data-icon="blueprint" aria-label="Solution Blueprint" title="Solution Blueprint"><span class="nav-item__label">Solution Blueprint</span></a></li>
           <li><a class="nav-item" href="#/templates" data-view="templates" data-icon="crop" aria-label="Template Studio" title="Template Studio"><span class="nav-item__label">Template Studio</span></a></li>
           <li><a class="nav-item" href="#/settings" data-view="settings" data-icon="settings" aria-label="Settings" title="Settings"><span class="nav-item__label">Settings</span></a></li>
+          <li id="nav-admin" hidden><a class="nav-item" href="#/admin" data-view="admin" data-icon="shield" aria-label="Administration" title="Administration"><span class="nav-item__label">Administration</span></a></li>
         </ul>
 
         <div class="sidebar__footer">

@@ -136,7 +136,7 @@ describe('document lifecycle', () => {
     const response = await fetch(`${baseUrl}/documents/${documentId}/fields/${target.key}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: 'Corrected By Reviewer', actor: 'tester@vgc.com' })
+      body: JSON.stringify({ value: 'Corrected By Reviewer' })
     });
 
     assert.equal(response.status, 200);
@@ -156,14 +156,18 @@ describe('document lifecycle', () => {
   });
 
   test('should_record_an_approval_decision_in_the_audit_trail', async () => {
-    const payload = await (await postJson(`/documents/${documentId}/decision`, {
-      decision: 'approve',
-      note: 'Verified against the supplier portal.',
-      actor: 'tester@vgc.com'
-    })).json();
+    const response = await fetch(`${baseUrl}/documents/${documentId}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-operator': 'tester@vgc.com' },
+      // The body's actor is ignored: attribution comes from the authenticated caller.
+      body: JSON.stringify({ decision: 'approve', note: 'Verified against the supplier portal.', actor: 'forged@example.com' })
+    });
+    const payload = await response.json();
 
     assert.equal(payload.status, 'approved');
-    assert.ok(payload.audit.some((entry) => entry.action === 'approved'));
+    const approval = payload.audit.find((entry) => entry.action === 'approved');
+    assert.ok(approval);
+    assert.equal(approval.actor, 'tester@vgc.com');
   });
 
   test('should_reject_an_unknown_decision', async () => {

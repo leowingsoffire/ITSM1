@@ -50,6 +50,7 @@ export async function render() {
           onRowClick: (index) => {
             location.hash = `#/templates/${items[index].id}`;
           },
+          stack: 600,
           emptyMessage: 'No extraction templates yet.',
           label: 'Extraction templates'
         }

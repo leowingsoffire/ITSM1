@@ -60,7 +60,7 @@ export async function render() {
         confidenceChip(item.classificationConfidence),
         relativeTime(item.uploadedAt)
       ]),
-      { label: 'Review queue', onRowClick: (index) => { location.hash = `#/documents/${queue.items[index].documentId}`; } }
+      { stack: 600, label: 'Review queue', onRowClick: (index) => { location.hash = `#/documents/${queue.items[index].documentId}`; } }
     );
 
     host.replaceChildren(

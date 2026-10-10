@@ -6,6 +6,7 @@ import test, { describe } from 'node:test';
 import {
   addDays,
   addMonths,
+  displayIp,
   formatDate,
   formatMoney,
   maskIdentifier,
@@ -16,6 +17,17 @@ import {
 } from '../src/lib/format.js';
 
 describe('format helpers', () => {
+  test('should_show_ipv4_mapped_addresses_in_dotted_form', () => {
+    assert.equal(displayIp('::ffff:203.0.113.7'), '203.0.113.7');
+    assert.equal(displayIp('::FFFF:10.0.0.1'), '10.0.0.1');
+    assert.equal(displayIp('203.0.113.7'), '203.0.113.7');
+    assert.equal(displayIp('::1'), '::1');
+    assert.equal(displayIp('2001:db8::1'), '2001:db8::1');
+    assert.equal(displayIp(''), null);
+    assert.equal(displayIp(undefined), null);
+    assert.equal(displayIp('a'.repeat(100)).length, 64);
+  });
+
   test('should_parse_amounts_with_thousand_separators_and_currency_prefixes', () => {
     assert.equal(parseAmount('SGD 1,234.56'), 1234.56);
     assert.equal(parseAmount('US$ 89.10'), 89.1);

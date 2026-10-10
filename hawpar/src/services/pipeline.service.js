@@ -10,10 +10,11 @@
 import { EventEmitter } from 'node:events';
 import { config } from '../config/index.js';
 import { logger } from '../lib/logger.js';
-import { currentTenantId } from '../lib/tenantContext.js';
+import { currentTenantId, runWithTenant } from '../lib/tenantContext.js';
 import { getUpload } from './blob.service.js';
 import { runOrchestration } from './agents/orchestrator.service.js';
 import { selectModelForType } from './cost.service.js';
+import { claimJob, durableBacklog, persistJob, recoverJobs } from './queue.service.js';
 import {
   DocumentStatus,
   appendAudit,
@@ -55,28 +56,60 @@ function markStage(stages, name, status, detail, durationMs) {
 }
 
 /**
- * Enqueues a document for processing.
+ * Enqueues a document for processing. The job is first appended to the
+ * durable queue log so a restart between accept (202) and worker pickup
+ * cannot silently drop it; the file is claimed when a worker starts.
+ * Awaited by ingestion so `waitForIdle()` in tests sees the job.
  * @param {string} documentId
  * @param {string} correlationId
  */
-export function enqueue(documentId, correlationId) {
-  queue.push({ documentId, correlationId });
+export async function enqueue(documentId, correlationId) {
+  const tenantId = currentTenantId();
+  const jobId = await persistJob(tenantId, { documentId, correlationId });
+  queue.push({ documentId, correlationId, tenantId, jobId });
   emit('queued', { documentId, queueDepth: queue.length });
   drain();
+}
+
+/** Tenants already recovered this boot — recovery must run once, not per request. */
+const recoveredTenants = new Set();
+
+/**
+ * Replays durable jobs left behind by a previous process. Runs once per
+ * tenant per boot; later calls are no-ops so per-request store loads cannot
+ * duplicate the in-memory queue.
+ */
+export async function recoverPendingJobs() {
+  const tenantId = currentTenantId();
+  if (recoveredTenants.has(tenantId)) return 0;
+  recoveredTenants.add(tenantId);
+  const recovered = await recoverJobs(tenantId);
+  for (const job of recovered) {
+    queue.push({ documentId: job.documentId, correlationId: job.correlationId, tenantId, jobId: job.jobId });
+  }
+  if (recovered.length > 0) {
+    emit('recovered', { count: recovered.length, queueDepth: queue.length });
+    drain();
+  }
+  return recovered.length;
 }
 
 function drain() {
   while (activeWorkers < config.limits.pipelineConcurrency && queue.length > 0) {
     const job = queue.shift();
     activeWorkers += 1;
-    processDocument(job)
-      .catch((error) => {
-        logger.error('Unhandled pipeline failure.', { documentId: job.documentId, error });
-      })
-      .finally(() => {
-        activeWorkers -= 1;
-        drain();
-      });
+    // Jobs may belong to another tenant (recovered after boot); bind the
+    // tenant context so store/blob writes land in the right workspace.
+    runWithTenant(job.tenantId ?? currentTenantId(), () =>
+      processDocument(job)
+        .catch((error) => {
+          logger.error('Unhandled pipeline failure.', { documentId: job.documentId, error });
+        })
+        .finally(() => {
+          activeWorkers -= 1;
+          drain();
+        })
+    );
   }
 }
 
@@ -114,7 +147,11 @@ function rememberRun(run, summary) {
   if (runHistory.length > MAX_RETAINED_RUNS) runHistory.length = MAX_RETAINED_RUNS;
 }
 
-async function processDocument({ documentId, correlationId }) {
+async function processDocument({ documentId, correlationId, tenantId, jobId }) {
+  // Claiming removes the durable job file so a second boot cannot replay a
+  // job that is already running. Crash *during* processing still replays —
+  // by design (at-least-once) — the document status shows it as processing.
+  await claimJob(tenantId ?? currentTenantId(), jobId);
   const scopedLogger = logger.child({ correlationId, documentId });
   const startedAt = Date.now();
   let stages = markStage(newStages(), 'ingest', 'running');
@@ -280,6 +317,7 @@ async function patch(documentId, changes) {
 export function getPipelineStatus() {
   return {
     queueDepth: queue.length,
+    durableBacklog: durableBacklog(currentTenantId()),
     activeWorkers,
     concurrency: config.limits.pipelineConcurrency,
     processedCount,

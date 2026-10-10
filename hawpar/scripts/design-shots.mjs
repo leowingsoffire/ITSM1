@@ -5,13 +5,13 @@
  */
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
-import { CHROMIUM_EXE, dismissOnboarding, signIn } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, signIn } from './lib/e2e-session.mjs';
 
-const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8080';
+const BASE = (process.env.E2E_BASE ?? process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
 const OUT = 'artifacts/design';
 const ROUTES = process.env.SHOT_ROUTES?.split(',') ?? [
   'dashboard', 'ingest', 'documents', 'workflows', 'agents', 'accuracy',
-  'review', 'claims', 'search', 'azure', 'cost', 'blueprint', 'settings'
+  'review', 'claims', 'search', 'azure', 'cost', 'blueprint', 'settings', 'admin'
 ];
 const PRESETS = [
   { name: 'desktop', width: 1440, height: 900 },
@@ -47,7 +47,6 @@ for (const viewport of VIEWPORTS) {
     if (m.type() === 'error') problems.push(`${viewport.name}: ${m.text().slice(0, 100)}`);
   });
   await page.goto(BASE, { waitUntil: 'load' });
-  await dismissOnboarding(page);
   await signIn(page);
 
   for (const route of ROUTES) {

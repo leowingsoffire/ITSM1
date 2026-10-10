@@ -27,6 +27,7 @@ import { autoRepairFields, evaluateAccuracy, footTable } from '../accuracy.servi
 import { classifyDocument } from '../classification.service.js';
 import { estimateDocumentCost, selectModelForType } from '../cost.service.js';
 import { extractFields } from '../extraction.service.js';
+import { priorBoost } from '../learning.service.js';
 import { listAllDocuments } from '../store.service.js';
 import { validateDocument } from '../validation.service.js';
 import { instantiateWorkflow } from '../workflow.service.js';
@@ -227,9 +228,26 @@ const IMPLEMENTATIONS = {
     // fill gaps, never overwrite a grounded local extraction, and provenance is
     // recorded on the field itself.
     const merged = mergeAzureFields(raw, state.analysis, state.classification.typeId, threshold);
-    const { fields, repairs } = autoRepairFields(merged.fields);
-
+    const { fields: repaired, repairs } = autoRepairFields(merged.fields);
     const findings = [];
+
+    // Self-learning prior: reviewers' past corrections for this tenant nudge
+    // confidence toward the value shape they previously accepted. Capped at
+    // +0.12 so memory can promote but never override evidence.
+    const fields = [];
+    for (const field of repaired) {
+      const boost = await priorBoost({
+        typeId: state.classification.typeId,
+        fieldKey: field.key,
+        candidateValue: field.value ?? field.rawValue
+      });
+      fields.push(boost > 0 ? { ...field, confidence: Math.min(1, Number((field.confidence + boost).toFixed(4))) } : field);
+    }
+    const boosted = fields.filter((field, index) => field.confidence !== repaired[index].confidence).length;
+    if (boosted > 0) {
+      findings.push(note(Finding.INFO, `${boosted} field(s) boosted by reviewer correction memory.`));
+    }
+
     const missingCritical = fields.filter((field) => field.critical && field.rawValue === null);
     if (missingCritical.length > 0) {
       findings.push(
@@ -449,17 +467,54 @@ const IMPLEMENTATIONS = {
     const duplicates = listAllDocuments().filter(
       (candidate) => candidate.id !== record.id && candidate.checksum && candidate.checksum === record.checksum
     );
+    // Near-duplicate fraud signal (Koncile/Docsumo parity): same invoice
+    // number + same total from a different file is a re-submission or a
+    // forged copy even when the bytes differ (re-scanned, re-exported PDF).
+    const refField = state.fields.find((field) =>
+      /invoiceNumber|claimReference|poNumber|accountNumber|blNumber/i.test(field.key)
+    );
+    const totalField = state.fields.find((field) => field.type === 'currency' && field.value !== null);
+    const nearDuplicates = refField?.rawValue
+      ? listAllDocuments().filter(
+          (candidate) =>
+            candidate.id !== record.id &&
+            (!candidate.checksum || candidate.checksum !== record.checksum) &&
+            (candidate.fields ?? []).some(
+              (field) =>
+                field.key === refField.key &&
+                String(field.rawValue ?? '').trim().toLowerCase() ===
+                  String(refField.rawValue ?? '').trim().toLowerCase()
+            ) &&
+            (totalField?.value === null ||
+              totalField?.value === undefined ||
+              (candidate.fields ?? []).some(
+                (field) =>
+                  field.type === 'currency' &&
+                  typeof field.value === 'number' &&
+                  Math.abs(field.value - totalField.value) <= 0.02
+              ))
+        )
+      : [];
     checks.push({
       id: 'duplicate',
       name: 'Duplicate submission',
-      status: duplicates.length > 0 ? 'fail' : 'pass',
+      status: duplicates.length > 0 || nearDuplicates.length > 0 ? 'fail' : 'pass',
       detail:
         duplicates.length > 0
           ? `Identical checksum already ingested as ${duplicates[0].fileName}.`
-          : 'No duplicate submission detected.'
+          : nearDuplicates.length > 0
+            ? `Same ${refField.label} ${refField.rawValue} with a matching total already processed as ${nearDuplicates[0].fileName} — possible re-submission.`
+            : 'No duplicate submission detected.'
     });
     if (duplicates.length > 0) {
       findings.push(note(Finding.ERROR, 'Duplicate submission — this exact file has already been processed.'));
+    } else if (nearDuplicates.length > 0) {
+      findings.push(
+        note(
+          Finding.ERROR,
+          `Near-duplicate: ${refField.label} ${refField.rawValue} was already processed as ${nearDuplicates[0].fileName}. Verify before paying twice.`
+        )
+      );
     }
 
     if (state.tableReconciliation) {

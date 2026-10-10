@@ -1,47 +1,42 @@
 /**
- * onboarding.js — the customer onboarding wizard.
+ * onboarding.js — the workspace creation wizard.
  *
- * A three-step form (company profile → business type & scale → review) that
- * provisions a brand-new, isolated workspace via `POST /api/onboarding`. On
- * success the returned tenant id is persisted client-side (see `tenant.js`)
- * and sent as `x-tenant-id` on every subsequent API call, so this customer's
- * settings/branding/documents are scoped away from every other workspace —
- * including the shared "default" demo workspace pre-existing visitors land in.
- *
- * Presented *before* the passphrase gate for first-time visitors who have not
- * yet created (or restored) a workspace; existing workspaces skip straight to
- * the passphrase gate. This keeps the wizard purely additive: nothing about
- * the original single-tenant demo flow changes for anyone who already has a
- * workspace (or never uses onboarding at all).
+ * Provisions an isolated workspace via `POST /api/onboarding`. Two entry
+ * points share it:
+ *   - self-service signup from the sign-in screen: an extra step creates the
+ *     workspace administrator's account, and the server signs them in;
+ *   - "Create a workspace" from the account menu for someone already signed in,
+ *     who becomes the new workspace's administrator.
  */
-import { icon } from './icons.js';
 import { api, ApiError } from './api.js';
-import { setTenant, rememberSharedWorkspace } from './tenant.js';
+import { icon } from './icons.js';
+import { setTenantId } from './tenant.js';
 import { el, toast } from './util.js';
 
-const TOTAL_STEPS = 3;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const STEP_TITLES = Object.freeze([
-  'Tell us about your company',
-  'What does your business do?',
-  'Review & create your workspace'
-]);
+const COMPANY_SIZES = Object.freeze(['1–10 employees', '11–50 employees', '51–200 employees', '201–1,000 employees', '1,000+ employees']);
 
-/** A labelled text/select field with consistent wizard styling. */
+const STEP_TITLES = Object.freeze({
+  company: 'Tell us about your company',
+  business: 'What does your business do?',
+  account: 'Create your administrator account',
+  review: 'Review & create your workspace'
+});
+
+/** A labelled field with consistent wizard styling. */
 function field(label, inputNode, hint) {
-  return el('div.onboard-field', {}, [
-    el('label', { text: label }),
-    inputNode,
-    hint ? el('p.onboard-field__hint', { text: hint }) : null
-  ]);
+  const hintNode = hint ? el('p.onboard-field__hint', { id: `${inputNode.id}-hint`, text: hint }) : null;
+  if (hintNode) inputNode.setAttribute('aria-describedby', hintNode.id);
+  return el('div.onboard-field', {}, [el('label', { for: inputNode.id, text: label }), inputNode, hintNode]);
 }
 
-function textInput({ id, placeholder, value = '', type = 'text', required = false, maxlength }) {
-  return el('input', { id, type, placeholder, value, required, maxlength: maxlength ?? null });
+function textInput({ id, placeholder, value = '', type = 'text', required = false, maxlength, autocomplete }) {
+  return el('input', { id, name: id, type, placeholder, value, required, maxLength: maxlength ?? null, autocomplete: autocomplete ?? null });
 }
 
 function selectInput({ id, options, value = '', placeholder, required = false }) {
-  const select = el('select', { id, required });
+  const select = el('select', { id, name: id, required });
   if (placeholder) select.append(el('option', { value: '', text: placeholder, disabled: true, selected: !value }));
   for (const option of options) {
     const node = el('option', { value: option, text: option });
@@ -51,25 +46,34 @@ function selectInput({ id, options, value = '', placeholder, required = false })
   return select;
 }
 
-const COMPANY_SIZES = Object.freeze(['1–10 employees', '11–50 employees', '51–200 employees', '201–1,000 employees', '1,000+ employees']);
+function iconButton(className, label, iconName, { trailing = false } = {}) {
+  const parts = [el('span', { text: label })];
+  if (iconName) parts[trailing ? 'push' : 'unshift'](icon(iconName, { size: 16 }));
+  return el(`button.btn.${className}`, { type: 'button' }, parts);
+}
 
 /**
- * Presents the onboarding wizard and resolves once a workspace has been
- * created (or the visitor opts to sign in to the shared demo instead).
- * @returns {Promise<{ skipped: boolean }>}
+ * Presents the wizard.
+ * @param {object} [input]
+ * @param {boolean} [input.requireAccount] Collect the administrator account (anonymous signup).
+ * @param {number} [input.passwordMinLength]
+ * @param {{name?: string, email?: string}} [input.prefill] Contact details of a signed-in user.
+ * @returns {Promise<{ created: boolean, tenant?: object }>}
  */
-export function presentOnboarding() {
+export function presentOnboarding({ requireAccount = false, passwordMinLength = 10, prefill = {} } = {}) {
   return new Promise((resolve) => {
+    const steps = requireAccount ? ['company', 'business', 'account', 'review'] : ['company', 'business', 'review'];
     const data = {
       companyName: '',
       businessType: '',
       country: 'Singapore',
-      contactName: '',
-      contactEmail: '',
-      companySize: COMPANY_SIZES[0]
+      contactName: prefill.name ?? '',
+      contactEmail: prefill.email ?? '',
+      companySize: COMPANY_SIZES[0],
+      password: ''
     };
 
-    let step = 0;
+    let stepIndex = 0;
     let businessTypes = [];
     let countries = [];
     let submitting = false;
@@ -77,169 +81,222 @@ export function presentOnboarding() {
     const screen = el('div.onboard', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'onboard-title' });
     document.body.append(screen);
 
-    function finish(skipped) {
+    function finish(result) {
       screen.classList.add('is-leaving');
       setTimeout(() => {
         screen.remove();
-        resolve({ skipped });
-      }, skipped ? 0 : 260);
+        resolve(result);
+      }, result.created ? 260 : 0);
     }
 
     async function render() {
-      const stepIndex = step;
-      const progress = el('div.onboard-progress', { role: 'progressbar', 'aria-valuenow': stepIndex + 1, 'aria-valuemin': 1, 'aria-valuemax': TOTAL_STEPS },
-        Array.from({ length: TOTAL_STEPS }, (_, index) =>
-          el(`div.onboard-progress__dot${index <= stepIndex ? '.is-active' : ''}`, { 'aria-hidden': 'true' })
-        )
-      );
+      const step = steps[stepIndex];
+      const progress = el('div.onboard-progress', {
+        role: 'progressbar',
+        'aria-label': 'Workspace setup progress',
+        'aria-valuenow': stepIndex + 1,
+        'aria-valuemin': 1,
+        'aria-valuemax': steps.length
+      }, steps.map((_, index) => el(`div.onboard-progress__dot${index <= stepIndex ? '.is-active' : ''}`, { 'aria-hidden': 'true' })));
 
-      const body = el('div.onboard-step');
-      if (stepIndex === 0) body.append(await renderStepCompany());
-      else if (stepIndex === 1) body.append(await renderStepBusiness());
-      else body.append(renderStepReview());
+      let body;
+      if (step === 'company') body = await renderStepCompany();
+      else if (step === 'business') body = await renderStepBusiness();
+      else if (step === 'account') body = renderStepAccount();
+      else body = renderStepReview();
 
-      const skipLink = el('button.onboard-skip', { type: 'button', text: 'Sign in to the shared demo workspace instead' , on: { click: () => { rememberSharedWorkspace(); finish(true); } } });
+      const leaveLink = el('button.onboard-skip', {
+        type: 'button',
+        id: 'onboard-cancel',
+        text: requireAccount ? 'Already have an account? Sign in' : 'Cancel',
+        on: { click: () => finish({ created: false }) }
+      });
 
       const card = el('section.onboard-card', {}, [
         el('div.onboard-brand', {}, [
           icon('sparkles', { size: 22, className: 'onboard-brand__icon' }),
           el('div', {}, [
             el('h1', { id: 'onboard-title', text: 'Create your workspace' }),
-            el('p', { text: `Step ${stepIndex + 1} of ${TOTAL_STEPS} · ${STEP_TITLES[stepIndex]}` })
+            el('p', { text: `Step ${stepIndex + 1} of ${steps.length} · ${STEP_TITLES[step]}` })
           ])
         ]),
         progress,
-        body,
-        skipLink
+        el('div.onboard-step', {}, [body]),
+        leaveLink
       ]);
 
-      clearScreen();
-      screen.append(card);
-      requestAnimationFrame(() => card.querySelector('input, select, button.btn--primary')?.focus());
-    }
-
-    function clearScreen() {
-      while (screen.firstChild) screen.removeChild(screen.firstChild);
+      screen.replaceChildren(card);
+      requestAnimationFrame(() => card.querySelector('input, select, .onboard-actions .btn--primary')?.focus());
     }
 
     function goto(next) {
-      step = Math.max(0, Math.min(TOTAL_STEPS - 1, next));
+      stepIndex = Math.max(0, Math.min(steps.length - 1, next));
       render();
     }
 
+    function backButton() {
+      const button = iconButton('btn--ghost', 'Back', 'chevronLeft');
+      button.addEventListener('click', () => goto(stepIndex - 1));
+      return button;
+    }
+
+    function stepForm(children, onNext) {
+      return el('form.onboard-form', {
+        novalidate: true,
+        on: {
+          submit: (event) => {
+            event.preventDefault();
+            onNext();
+          }
+        }
+      }, children);
+    }
+
     async function renderStepCompany() {
-      const nameField = textInput({ id: 'ob-company-name', placeholder: 'e.g. Acme Logistics Pte. Ltd.', value: data.companyName, required: true, maxlength: 160 });
-      const contactField = textInput({ id: 'ob-contact-name', placeholder: 'e.g. Jamie Tan', value: data.contactName });
-      const emailField = textInput({ id: 'ob-contact-email', type: 'email', placeholder: 'you@company.com', value: data.contactEmail });
+      const nameField = textInput({ id: 'ob-company-name', placeholder: 'e.g. Acme Logistics Pte. Ltd.', value: data.companyName, required: true, maxlength: 120, autocomplete: 'organization' });
+      const contactField = textInput({ id: 'ob-contact-name', placeholder: 'e.g. Jamie Tan', value: data.contactName, autocomplete: 'name' });
+      const emailField = textInput({ id: 'ob-contact-email', type: 'email', placeholder: 'you@company.com', value: data.contactEmail, autocomplete: 'email' });
 
       if (countries.length === 0) {
         try {
-          const result = await api.onboardingCountries();
-          countries = result.items ?? [];
+          countries = (await api.onboardingCountries()).items ?? [];
         } catch {
           countries = ['Singapore'];
         }
       }
       const countryField = selectInput({ id: 'ob-country', options: countries, value: data.country });
-
       const errorSlot = el('p.onboard-error', { role: 'alert' });
+      const nextButton = iconButton('btn--primary', 'Continue', 'chevronRight', { trailing: true });
+      nextButton.type = 'submit';
 
-      const nextButton = el('button.btn.btn--primary', { type: 'button', text: 'Continue' }, [el('span', { text: 'Continue' }), icon('chevronRight', { size: 16 })]);
-      nextButton.textContent = '';
-      nextButton.append(el('span', { text: 'Continue' }), icon('chevronRight', { size: 16 }));
-      nextButton.addEventListener('click', () => {
+      const next = () => {
         data.companyName = nameField.value.trim();
-        data.contactName = contactField.value.trim();
-        data.contactEmail = emailField.value.trim();
         data.country = countryField.value;
-
+        if (!requireAccount) {
+          data.contactName = contactField.value.trim();
+          data.contactEmail = emailField.value.trim();
+        }
         if (data.companyName.length < 2) {
           errorSlot.textContent = 'Enter your company name to continue.';
           nameField.focus();
           return;
         }
-        if (data.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.contactEmail)) {
+        if (!requireAccount && data.contactEmail && !EMAIL_PATTERN.test(data.contactEmail)) {
           errorSlot.textContent = 'Enter a valid contact email, or leave it blank.';
           emailField.focus();
           return;
         }
         errorSlot.textContent = '';
-        goto(step + 1);
-      });
+        goto(stepIndex + 1);
+      };
 
-      return el('form.onboard-form', { novalidate: true, on: { submit: (event) => event.preventDefault() } }, [
+      return stepForm([
         field('Company name', nameField),
-        field('Registered country', countryField, 'Used to seed your regional and timezone defaults — you can change this later in Settings.'),
-        el('div.onboard-form__row', {}, [
-          field('Your name', contactField, 'Optional'),
-          field('Work email', emailField, 'Optional — used only for workspace notifications, never shared.')
-        ]),
+        field('Registered country', countryField, 'Seeds your regional and timezone defaults. You can change it later in Settings.'),
+        requireAccount
+          ? null
+          : el('div.onboard-form__row', {}, [
+              field('Contact name', contactField, 'Optional'),
+              field('Contact email', emailField, 'Optional. Used only for workspace notifications.')
+            ]),
         errorSlot,
         el('div.onboard-actions', {}, [nextButton])
-      ]);
+      ], next);
     }
 
     async function renderStepBusiness() {
       if (businessTypes.length === 0) {
         try {
-          const result = await api.onboardingBusinessTypes();
-          businessTypes = result.items ?? [];
+          businessTypes = (await api.onboardingBusinessTypes()).items ?? [];
         } catch {
           businessTypes = ['Other'];
         }
       }
-      const typeField = selectInput({ id: 'ob-business-type', options: businessTypes, value: data.businessType, placeholder: 'Select your industry' });
+      const typeField = selectInput({ id: 'ob-business-type', options: businessTypes, value: data.businessType, placeholder: 'Select your industry', required: true });
       const sizeField = selectInput({ id: 'ob-company-size', options: COMPANY_SIZES, value: data.companySize });
-
       const errorSlot = el('p.onboard-error', { role: 'alert' });
+      const nextButton = iconButton('btn--primary', 'Continue', 'chevronRight', { trailing: true });
+      nextButton.type = 'submit';
 
-      const backButton = el('button.btn.btn--ghost', { type: 'button' }, [icon('chevronLeft', { size: 16 }), el('span', { text: 'Back' })]);
-      backButton.addEventListener('click', () => goto(step - 1));
-
-      const nextButton = el('button.btn.btn--primary', { type: 'button' }, [el('span', { text: 'Continue' }), icon('chevronRight', { size: 16 })]);
-      nextButton.addEventListener('click', () => {
+      const next = () => {
         data.businessType = typeField.value;
         data.companySize = sizeField.value;
         if (!data.businessType) {
           errorSlot.textContent = 'Choose the option that best describes your business.';
+          typeField.focus();
           return;
         }
         errorSlot.textContent = '';
-        goto(step + 1);
-      });
+        goto(stepIndex + 1);
+      };
 
-      return el('form.onboard-form', { novalidate: true, on: { submit: (event) => event.preventDefault() } }, [
-        field('Type of business', typeField, 'Helps us tailor document types and workflow templates to your industry.'),
+      return stepForm([
+        field('Type of business', typeField, 'Tailors document types and workflow templates to your industry.'),
         field('Company size', sizeField),
         errorSlot,
-        el('div.onboard-actions', {}, [backButton, nextButton])
-      ]);
+        el('div.onboard-actions', {}, [backButton(), nextButton])
+      ], next);
+    }
+
+    function renderStepAccount() {
+      const nameField = textInput({ id: 'ob-account-name', placeholder: 'e.g. Jamie Tan', value: data.contactName, autocomplete: 'name' });
+      const emailField = textInput({ id: 'ob-account-email', type: 'email', placeholder: 'you@company.com', value: data.contactEmail, required: true, autocomplete: 'username' });
+      const passwordField = textInput({ id: 'ob-account-password', type: 'password', value: data.password, required: true, autocomplete: 'new-password' });
+      const confirmField = textInput({ id: 'ob-account-confirm', type: 'password', value: data.password, required: true, autocomplete: 'new-password' });
+      const errorSlot = el('p.onboard-error', { role: 'alert' });
+      const nextButton = iconButton('btn--primary', 'Continue', 'chevronRight', { trailing: true });
+      nextButton.type = 'submit';
+
+      const next = () => {
+        const name = nameField.value.trim();
+        const email = emailField.value.trim();
+        const fail = (text, input) => {
+          errorSlot.textContent = text;
+          input.focus();
+        };
+        if (name.length < 2) return fail('Enter your name.', nameField);
+        if (!EMAIL_PATTERN.test(email)) return fail('Enter a valid work email address.', emailField);
+        if (passwordField.value.length < passwordMinLength) return fail(`Passwords must be at least ${passwordMinLength} characters long.`, passwordField);
+        if (passwordField.value.trim().toLowerCase() === email.toLowerCase()) return fail('Choose a password that is different from your email address.', passwordField);
+        if (passwordField.value !== confirmField.value) return fail('The passwords do not match.', confirmField);
+        data.contactName = name;
+        data.contactEmail = email;
+        data.password = passwordField.value;
+        errorSlot.textContent = '';
+        goto(stepIndex + 1);
+      };
+
+      return stepForm([
+        el('p.onboard-lead', { text: 'You will be the administrator of this workspace and can invite your team once it is ready.' }),
+        el('div.onboard-form__row', {}, [field('Your name', nameField), field('Work email', emailField, 'You will sign in with this address.')]),
+        el('div.onboard-form__row', {}, [
+          field('Password', passwordField, `At least ${passwordMinLength} characters.`),
+          field('Confirm password', confirmField)
+        ]),
+        errorSlot,
+        el('div.onboard-actions', {}, [backButton(), nextButton])
+      ], next);
     }
 
     function renderStepReview() {
-      const summary = el('dl.onboard-summary', {}, [
-        el('dt', { text: 'Company' }), el('dd', { text: data.companyName }),
-        el('dt', { text: 'Country' }), el('dd', { text: data.country }),
-        el('dt', { text: 'Business type' }), el('dd', { text: data.businessType }),
-        el('dt', { text: 'Company size' }), el('dd', { text: data.companySize }),
-        data.contactName ? el('dt', { text: 'Contact' }) : null,
-        data.contactName ? el('dd', { text: data.contactName }) : null,
-        data.contactEmail ? el('dt', { text: 'Email' }) : null,
-        data.contactEmail ? el('dd', { text: data.contactEmail }) : null
-      ]);
+      const rows = [
+        ['Company', data.companyName],
+        ['Country', data.country],
+        ['Business type', data.businessType],
+        ['Company size', data.companySize],
+        [requireAccount ? 'Administrator' : 'Contact', [data.contactName, data.contactEmail].filter(Boolean).join(' · ')]
+      ].filter(([, value]) => value);
+      const summary = el('dl.onboard-summary', {}, rows.flatMap(([label, value]) => [el('dt', { text: label }), el('dd', { text: value })]));
 
       const errorSlot = el('p.onboard-error', { role: 'alert' });
-
-      const backButton = el('button.btn.btn--ghost', { type: 'button' }, [icon('chevronLeft', { size: 16 }), el('span', { text: 'Back' })]);
-      backButton.addEventListener('click', () => goto(step - 1));
-
-      const createButton = el('button.btn.btn--primary', { type: 'button' }, [icon('sparkles', { size: 16 }), el('span', { text: 'Create my workspace' })]);
+      const createButton = iconButton('btn--primary', 'Create my workspace', 'sparkles');
+      createButton.id = 'onboard-create';
       createButton.addEventListener('click', async () => {
         if (submitting) return;
         submitting = true;
         createButton.disabled = true;
-        createButton.textContent = '';
-        createButton.append(el('span', { text: 'Provisioning your workspace…' }));
+        createButton.setAttribute('aria-busy', 'true');
+        createButton.querySelector('span').textContent = 'Provisioning your workspace…';
 
         try {
           const { tenant } = await api.createWorkspace({
@@ -248,27 +305,25 @@ export function presentOnboarding() {
             country: data.country,
             contactName: data.contactName || undefined,
             contactEmail: data.contactEmail || undefined,
-            companySize: data.companySize
+            companySize: data.companySize,
+            account: requireAccount ? { name: data.contactName, email: data.contactEmail, password: data.password } : undefined
           });
-          setTenant(tenant.id, { companyName: tenant.companyName, businessType: tenant.businessType });
+          data.password = '';
+          setTenantId(tenant.id);
           toast(`Workspace created for ${tenant.companyName}.`, 'success');
-          finish(false);
+          finish({ created: true, tenant });
         } catch (error) {
           submitting = false;
           createButton.disabled = false;
-          createButton.textContent = '';
-          createButton.append(icon('sparkles', { size: 16 }), el('span', { text: 'Create my workspace' }));
+          createButton.removeAttribute('aria-busy');
+          createButton.querySelector('span').textContent = 'Create my workspace';
           errorSlot.textContent = error instanceof ApiError
             ? error.message
             : 'Something went wrong while creating your workspace. Please try again.';
         }
       });
 
-      return el('div', {}, [
-        summary,
-        errorSlot,
-        el('div.onboard-actions', {}, [backButton, createButton])
-      ]);
+      return el('div', {}, [summary, errorSlot, el('div.onboard-actions', {}, [backButton(), createButton])]);
     }
 
     render();

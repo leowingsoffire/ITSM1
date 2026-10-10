@@ -141,7 +141,7 @@ export async function render() {
           statusBadge(item.status),
           formatTime(item.uploadedAt)
         ]),
-        { emptyMessage: 'No documents have been submitted yet.', label: 'Recent submissions' }
+        { stack: 600, emptyMessage: 'No documents have been submitted yet.', label: 'Recent submissions' }
       );
 
       recentBody.replaceChildren(summary, table);

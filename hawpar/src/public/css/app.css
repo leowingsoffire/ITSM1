@@ -314,6 +314,9 @@ button { font-family: inherit; font-size: inherit; }
 .nav-item.is-active .nav-item__count { background: #fff; color: var(--accent-strong); }
 .nav-item__count--alert:not(:empty) { background: var(--danger-soft); color: var(--danger-ink); }
 .nav-item.is-active .nav-item__count--alert:not(:empty) { background: #fff; color: var(--danger-ink); }
+/* A zero count is cleared to empty text; without this the pill's padding and
+   fill would still render as a stray grey dash (a dot on the narrow rail). */
+.nav-item__count:empty { display: none; }
 
 .sidebar__footer { padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 10px; }
 .sidebar__note { font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
@@ -525,6 +528,42 @@ table.data td > a:only-child {
 table.data .mono { font-family: var(--mono); font-size: 12px; }
 .table-empty { padding: 34px; text-align: center; color: var(--text-muted); }
 
+/*
+ * Stacked tables (`dataTable(..., { stack })`). Below its threshold width the
+ * table gets `.is-stacked` and each row becomes a block of label/value pairs
+ * (one column on a phone, two or more where there is room), so inline
+ * controls such as role pickers and trailing columns such as status stay on
+ * screen instead of behind a sideways scroll.
+ */
+.table-wrap.is-stacked table.data,
+.table-wrap.is-stacked table.data tbody { display: block; }
+.table-wrap.is-stacked table.data thead {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.table-wrap.is-stacked table.data tbody tr {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); column-gap: 28px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.table-wrap.is-stacked table.data tbody tr:last-child { border-bottom: 0; }
+.table-wrap.is-stacked table.data td {
+  display: grid; grid-template-columns: minmax(84px, 40%) minmax(0, 1fr);
+  align-items: center; gap: 12px;
+  padding: 5px 0; border-bottom: 0; text-align: left;
+}
+.table-wrap.is-stacked table.data td::before {
+  content: attr(data-label);
+  color: var(--text-secondary); font-size: 11px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+/* The first cell names the row, so it leads the block without a label. */
+.table-wrap.is-stacked table.data td:first-child { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); padding: 0 0 6px; }
+.table-wrap.is-stacked table.data td:first-child::before { content: none; }
+.table-wrap.is-stacked table.data td:empty { display: none; }
+/* Values keep their natural width: a badge stays a pill instead of filling its column. */
+.table-wrap.is-stacked table.data td > * { justify-self: start; max-width: 100%; }
+.table-wrap.is-stacked table.data td > select { justify-self: start; width: 100%; max-width: 320px; }
+
 /* ---------- Badges ---------- */
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
@@ -651,7 +690,21 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 .page-svg .anchor--active { fill: rgba(22, 163, 123, 0.25); stroke: var(--jade-600); stroke-width: 1.6; }
 
 /* ---------- Tabs ---------- */
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--slate-200); padding: 0 8px; overflow-x: auto; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--slate-200); padding: 0 8px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+/* `tabGroup` sets these while tabs sit beyond an edge of the scrolled strip. */
+.tabs.has-more-end {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.tabs.has-more-start {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px);
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+.tabs.has-more-start.has-more-end {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
 .tab {
   position: relative;
   padding: 10px 13px; border: none; background: none; cursor: pointer;
@@ -856,13 +909,19 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 }
 .empty h3 { margin: 0 0 6px; color: var(--slate-700); font-size: 15px; }
 
-.toast-stack { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 90; }
+/* Sits above the Copilot button so a toast never hides it. */
+.toast-stack {
+  position: fixed; right: var(--fab-offset); bottom: calc(var(--fab-offset) + var(--fab-size) + 12px);
+  display: grid; gap: 8px; z-index: 90; max-width: calc(100vw - 2 * var(--fab-offset));
+}
 .toast {
   display: flex; align-items: center; gap: 9px;
-  min-width: 260px; max-width: 400px; padding: 11px 14px; border-radius: var(--radius);
+  min-width: min(260px, 100%); max-width: 400px; padding: 11px 14px; border-radius: var(--radius);
   background: var(--navy-900); color: #fff; font-size: 13px; box-shadow: var(--shadow-lg);
   animation: toast-in 320ms var(--ease-spring) both;
+  transition: opacity 0.25s ease;
 }
+.toast.is-leaving { opacity: 0; }
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(28px) scale(0.96); }
   to { opacity: 1; transform: none; }

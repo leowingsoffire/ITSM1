@@ -96,6 +96,7 @@ export async function render() {
       ]),
       {
         label: 'Marketing claims',
+        stack: 600,
         emptyMessage: 'No marketing claims match.',
         label: 'Marketing claims',
         onRowClick: (index) => {

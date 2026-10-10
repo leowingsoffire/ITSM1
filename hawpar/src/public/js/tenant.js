@@ -1,89 +1,63 @@
 /**
- * Client-side workspace (tenant) identity.
+ * The workspace this browser tab is working in.
  *
- * Mirrors the demo-grade realism of `role.js`/`login.js`: there is still no
- * real user/session backend. What this adds is a *workspace* identifier —
- * returned by `POST /api/onboarding` when a customer completes the wizard —
- * persisted in `localStorage` (survives across tabs/reloads, unlike the
- * passphrase gate's `sessionStorage`) and sent on every API call as
- * `x-tenant-id` so the server can keep that customer's company profile,
- * branding and processed documents isolated from everyone else's.
- *
- * No header is sent at all until a workspace has been created, which keeps
- * the original single-tenant demo experience (and every existing API call)
- * unchanged for visitors who skip onboarding entirely.
+ * The value is a selector, never a credential: the server checks the signed-in
+ * user's membership of the named workspace on every request. It lives in
+ * sessionStorage (one value per tab) so two tabs can work in two different
+ * workspaces at once without overwriting each other.
  */
-const TENANT_KEY = 'vgc.tenant-id';
-const TENANT_META_KEY = 'vgc.tenant-meta';
-const WORKSPACE_CHOICE_KEY = 'vgc.workspace-choice';
+const TAB_WORKSPACE_KEY = 'vgc.tab-workspace';
 
-/** @returns {string|null} the active workspace id, or null when none has been created yet. */
+// Client-side identity from the pre-authentication releases. Clearing it once
+// stops stale values from being sent or displayed.
+const LEGACY_LOCAL_KEYS = ['vgc.tenant-id', 'vgc.tenant-meta', 'vgc.workspace-choice'];
+const LEGACY_SESSION_KEYS = ['vgc.session-user', 'vgc.demo-role'];
+
+let activeTenantId = null;
+
+/** @returns {string|null} the workspace this tab is working in. */
 export function getTenantId() {
+  return activeTenantId;
+}
+
+/** @returns {string|null} the workspace this tab used before a reload. */
+export function rememberedTenantId() {
   try {
-    return localStorage.getItem(TENANT_KEY) || null;
+    return sessionStorage.getItem(TAB_WORKSPACE_KEY);
   } catch {
     return null;
   }
 }
 
-/** @returns {object|null} cached `{ companyName, businessType }` for the active workspace. */
-export function getTenantMeta() {
+/** @param {string|null} tenantId */
+export function setTenantId(tenantId) {
+  activeTenantId = tenantId || null;
   try {
-    const raw = localStorage.getItem(TENANT_META_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (activeTenantId) sessionStorage.setItem(TAB_WORKSPACE_KEY, activeTenantId);
+    else sessionStorage.removeItem(TAB_WORKSPACE_KEY);
   } catch {
-    return null;
+    /* storage unavailable: the tab falls back to the session's workspace on reload */
   }
 }
 
-/** @param {string} tenantId @param {object} [meta] */
-export function setTenant(tenantId, meta) {
+export function forgetLegacyIdentity() {
   try {
-    localStorage.setItem(TENANT_KEY, tenantId);
-    if (meta) localStorage.setItem(TENANT_META_KEY, JSON.stringify(meta));
-  } catch {
-    /* storage unavailable — the workspace simply won't persist across reloads */
-  }
-}
-
-export function clearTenant() {
-  try {
-    localStorage.removeItem(TENANT_KEY);
-    localStorage.removeItem(TENANT_META_KEY);
-    localStorage.removeItem(WORKSPACE_CHOICE_KEY);
+    for (const key of LEGACY_LOCAL_KEYS) localStorage.removeItem(key);
+    for (const key of LEGACY_SESSION_KEYS) sessionStorage.removeItem(key);
   } catch {
     /* nothing to clear */
   }
 }
 
-export function hasTenant() {
-  return Boolean(getTenantId());
-}
-
 /**
- * Records that the visitor deliberately chose the shared demo workspace over
- * creating their own. Without this, declining the wizard is forgotten on the
- * next load and the visitor is asked to onboard again on every single reload.
+ * Adds the tab's workspace to a same-origin API URL. Links and EventSource
+ * cannot send the x-tenant-id header, so they name the workspace in the query.
+ * @param {string} url
+ * @returns {string}
  */
-export function rememberSharedWorkspace() {
-  try {
-    localStorage.setItem(WORKSPACE_CHOICE_KEY, 'shared');
-  } catch {
-    /* storage unavailable — the wizard will simply be offered again */
-  }
-}
-
-/** @returns {boolean} true once the visitor has either created or declined a workspace. */
-export function hasWorkspaceChoice() {
-  if (hasTenant()) return true;
-  try {
-    return localStorage.getItem(WORKSPACE_CHOICE_KEY) === 'shared';
-  } catch {
-    return false;
-  }
-}
-
-/** @returns {string} a human label for the active workspace, for display in the UI. */
-export function workspaceLabel() {
-  return getTenantMeta()?.companyName || 'Shared demo workspace';
+export function withTenant(url) {
+  if (!activeTenantId || typeof url !== 'string' || !url.startsWith('/api/')) return url;
+  const parsed = new URL(url, location.origin);
+  parsed.searchParams.set('tenantId', activeTenantId);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

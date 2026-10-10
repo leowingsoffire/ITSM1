@@ -6,6 +6,7 @@
 import express from 'express';
 import { Role } from '../domain/settings.js';
 import { badRequest } from '../lib/errors.js';
+import { auditRequest } from '../services/activity.service.js';
 import { lookupAcraEntities } from '../services/acra.service.js';
 import { sendTestEmail, verifySmtpConnection } from '../services/mailer.service.js';
 import { assertEditable, ensureTenantSettingsLoaded, getSettingsRaw, updateSettings } from '../services/settings.service.js';
@@ -17,14 +18,13 @@ const router = express.Router();
 const MAX_LOGO_DATA_URL_LENGTH = 400_000; // ~300KB decoded, plenty for a cropped header/sidebar logo.
 const LOGO_DATA_URL_PATTERN = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/;
 
-/** Reads the caller's declared role. Defaults to the least-privileged role (fail closed). */
+/** The caller's role in this workspace, resolved server-side by `tenantContext`. */
 function callerRole(request) {
-  const raw = String(request.get('x-user-role') ?? '').toLowerCase();
-  return raw === Role.ADMIN ? Role.ADMIN : Role.USER;
+  return request.role === Role.ADMIN ? Role.ADMIN : Role.USER;
 }
 
 function callerActor(request) {
-  return request.get('x-user-operator') || 'demo.user@vgc.com';
+  return request.actor ?? 'system';
 }
 
 router.get(
@@ -64,6 +64,9 @@ router.patch(
     }
 
     const settings = await updateSettings(patch, role, callerActor(request));
+    auditRequest(request, 'settings.updated', {
+      detail: `Changed: ${Object.keys(patch).filter((key) => key !== 'role').join(', ') || 'nothing'}`
+    });
     response.json({ settings: redactSecrets(settings), role, editable: role === Role.ADMIN });
   })
 );

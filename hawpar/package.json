@@ -13,6 +13,8 @@
     "dev": "node --watch src/server.js",
     "test": "node scripts/run-tests.mjs",
     "e2e": "node scripts/e2e.mjs",
+    "e2e:identity": "node scripts/e2e-identity.mjs",
+    "e2e:onboarding": "node scripts/e2e-onboard-vgc.mjs",
     "e2e:settings": "node scripts/e2e-settings.mjs",
     "e2e:settings-deep": "node scripts/e2e-settings-deep.mjs",
     "e2e:templates": "node scripts/e2e-templates.mjs",

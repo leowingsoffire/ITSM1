@@ -142,11 +142,21 @@ export const config = Object.freeze({
   security: Object.freeze({
     apiKey: readString('API_KEY'),
     corsAllowedOrigins: Object.freeze(readList('CORS_ALLOWED_ORIGINS')),
+    // Self-service onboarding: anyone may create a new, isolated workspace
+    // (and become its administrator). Set SELF_SIGNUP=false for invite-only
+    // deployments — platform administrators can still create workspaces.
+    selfSignup: readBoolean('SELF_SIGNUP', true),
+    sessionTtlHours: readNumber('SESSION_TTL_HOURS', 12, { min: 1, max: 720 }),
+    // Webhook destinations must be public internet hosts. Private, loopback
+    // and link-local targets are refused (SSRF) unless explicitly allowed for
+    // local development or tests.
+    webhookAllowPrivateTargets: readBoolean('WEBHOOK_ALLOW_PRIVATE_TARGETS', false),
     // Per-client budgets, tunable per deployment: a busy tenant behind a
     // single egress IP needs a higher ceiling than a local demo.
     rateLimit: Object.freeze({
       apiPerMinute: readNumber('RATE_LIMIT_API_PER_MINUTE', 600, { min: 10, max: 100000 }),
-      uploadPerMinute: readNumber('RATE_LIMIT_UPLOAD_PER_MINUTE', 60, { min: 1, max: 10000 })
+      uploadPerMinute: readNumber('RATE_LIMIT_UPLOAD_PER_MINUTE', 60, { min: 1, max: 10000 }),
+      authPerMinute: readNumber('RATE_LIMIT_AUTH_PER_MINUTE', 20, { min: 3, max: 10000 })
     })
   })
 });

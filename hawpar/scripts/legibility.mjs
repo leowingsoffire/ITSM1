@@ -9,17 +9,17 @@
  *   node scripts/legibility.mjs --top 20  # also list the 20 tightest passes
  */
 import { chromium } from 'playwright-core';
-import { CHROMIUM_EXE, dismissOnboarding, signIn, settleUi } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, signIn, settleUi } from './lib/e2e-session.mjs';
 import { measureTextContrast } from './lib/contrast.mjs';
 
-const BASE = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8080';
+const BASE = (process.env.E2E_BASE ?? process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
 const THRESHOLD = Number(process.env.CONTRAST_THRESHOLD ?? 4.5);
 const topIndex = process.argv.indexOf('--top');
 const TOP = topIndex === -1 ? 0 : Number(process.argv[topIndex + 1] ?? 10);
 
 const ROUTES = [
   'dashboard', 'ingest', 'documents', 'workflows', 'agents', 'accuracy',
-  'review', 'claims', 'search', 'azure', 'cost', 'blueprint', 'settings'
+  'review', 'claims', 'search', 'azure', 'cost', 'blueprint', 'settings', 'admin'
 ];
 
 const VIEWPORTS = [
@@ -42,7 +42,6 @@ for (const viewport of VIEWPORTS) {
   });
   const page = await context.newPage();
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-  await dismissOnboarding(page);
   await signIn(page);
 
   for (const route of ROUTES) {

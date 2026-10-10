@@ -202,15 +202,22 @@ export function debounce(fn, waitMs = 280) {
   };
 }
 
+/** Visible at once; older toasts give way so a burst never buries the page. */
+const MAX_TOASTS = 3;
+
 /** Simple accessible toast. */
 export function toast(message, variant = 'info', timeoutMs = 4200) {
   const stack = document.getElementById('toast-stack');
   if (!stack) return;
   const node = el(`div.toast${variant === 'info' ? '' : `.toast--${variant}`}`, { text: message, role: 'status' });
   stack.append(node);
-  setTimeout(() => {
-    node.style.opacity = '0';
-    node.style.transition = 'opacity 0.25s ease';
-    setTimeout(() => node.remove(), 260);
-  }, timeoutMs);
+  const live = [...stack.children].filter((child) => !child.classList.contains('is-leaving'));
+  for (const stale of live.slice(0, Math.max(0, live.length - MAX_TOASTS))) dismissToast(stale);
+  setTimeout(() => dismissToast(node), timeoutMs);
+}
+
+function dismissToast(node) {
+  if (!node.isConnected || node.classList.contains('is-leaving')) return;
+  node.classList.add('is-leaving');
+  setTimeout(() => node.remove(), 260);
 }

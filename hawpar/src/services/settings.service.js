@@ -14,6 +14,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config/index.js';
 import { badRequest, forbidden } from '../lib/errors.js';
+import { atomicWriteFile } from '../lib/atomicWrite.js';
 import { logger } from '../lib/logger.js';
 import { currentTenantId, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 import { tenantDataDir } from './tenant.service.js';
@@ -55,9 +56,7 @@ function queueWrite(tenantId, task) {
 async function persist(tenantId) {
   const document = settingsByTenant.get(tenantId);
   return queueWrite(tenantId, async () => {
-    const dir = tenantDataDir(tenantId);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(settingsPath(tenantId), JSON.stringify(document, null, 2), 'utf8');
+    await atomicWriteFile(settingsPath(tenantId), JSON.stringify(document, null, 2), 'utf8');
   });
 }
 

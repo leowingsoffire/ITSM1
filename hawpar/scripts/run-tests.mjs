@@ -24,7 +24,17 @@ const child = spawn(
   ['--test', '--test-concurrency=1', 'tests/', ...process.argv.slice(2)],
   {
     stdio: 'inherit',
-    env: { ...process.env, DATA_DIR: dataDir, NODE_ENV: 'test', LOG_LEVEL: process.env.LOG_LEVEL ?? 'error' }
+    env: {
+      ...process.env,
+      DATA_DIR: dataDir,
+      NODE_ENV: 'test',
+      LOG_LEVEL: process.env.LOG_LEVEL ?? 'error',
+      // The production session guard stays absolute, but the existing
+      // API suites predate sessions and drive routes with x-user-role.
+      // This flag lets tests exercise the real routes without managing
+      // cookies; it is never set in production or in the shipped image.
+      VGC_TEST_AUTH_BYPASS: '1'
+    }
   }
 );
 

@@ -1,9 +1,10 @@
-/* Browser verification for the Settings module. Run: node scripts/e2e-settings.mjs */
+/* Browser verification for the Settings module. Run: node scripts/e2e-settings.mjs
+ * Needs E2E_EMAIL/E2E_PASSWORD (or ADMIN_EMAIL/ADMIN_PASSWORD) for an administrator. */
 import { chromium } from 'playwright-core';
-import { CHROMIUM_EXE, artifact, dismissOnboarding } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, artifact, signIn } from './lib/e2e-session.mjs';
 
 const EXE = CHROMIUM_EXE;
-const BASE = process.env.E2E_BASE ?? 'http://localhost:8080';
+const BASE = (process.env.E2E_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 const results = [];
 const ok = (name, pass, detail = '') => {
   results.push({ name, pass, detail });
@@ -24,16 +25,11 @@ try {
   });
 
   await page.goto(BASE, { waitUntil: 'load' });
-  await dismissOnboarding(page);
-  await page.waitForSelector('#auth-passphrase', { timeout: 10000 });
 
-  // --- Log in as Administrator ---
-  const adminOption = await page.$('.auth__role-toggle button[data-role="admin"]');
-  ok('login role picker present', Boolean(adminOption));
-  if (adminOption) await adminOption.click();
-  await page.fill('#auth-passphrase', 'vgc');
-  await page.click('button.auth__submit', { force: true });
-  await page.waitForSelector('.auth', { state: 'detached', timeout: 10000 });
+  // --- Sign in as an administrator ---
+  await signIn(page);
+  const adminNavVisible = await page.$eval('#nav-admin', (node) => !node.hidden);
+  ok('signed in as a workspace administrator', adminNavVisible);
 
   // --- Navigate to Settings ---
   await page.waitForSelector('a.nav-item[data-view="settings"]', { timeout: 10000 });
@@ -95,19 +91,47 @@ try {
   const templateArea = await page.$('textarea');
   ok('templates tab renders editable template', Boolean(templateArea));
 
-  // --- Role enforcement: switch to Standard User, reload, fields should be disabled/locked ---
-  await page.evaluate(() => sessionStorage.setItem('vgc.demo-role', 'user'));
-  await page.reload({ waitUntil: 'load' });
-  await page.waitForFunction(() => document.querySelector('.settings-grid'), null, { timeout: 10000 });
-  await page.waitForTimeout(400);
-  const lockedCount = await page.$$eval('.settings-field__lock', (n) => n.length);
-  ok('standard-user role sees admin-only fields locked', lockedCount > 0, `${lockedCount} locked fields`);
+  // --- Role enforcement: a real operator account sees admin-only fields locked ---
+  // The operator is created for this run and removed again at the end.
+  const operatorEmail = `settings.operator.${Date.now().toString(36)}@e2e.vgc.test`;
+  const added = await page.context().request.post(`${BASE}/api/admin/members`, { data: { email: operatorEmail, role: 'user' } });
+  const { member, temporaryPassword } = await added.json();
+  ok('an operator account is created for the role check', added.status() === 201 && Boolean(temporaryPassword), `HTTP ${added.status()}`);
 
-  const userTab = await page.$('.tabs .tab');
-  await userTab.click();
-  await page.waitForTimeout(300);
-  const companyInputDisabled = await page.$eval('input[id*="company"]', (n) => n.disabled);
-  ok('company fields disabled for standard user', companyInputDisabled === true);
+  const operatorContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const operatorPage = await operatorContext.newPage();
+  await operatorPage.emulateMedia({ reducedMotion: 'reduce' });
+  operatorPage.on('pageerror', (e) => pageErrors.push(String(e)));
+  try {
+    await operatorPage.goto(BASE, { waitUntil: 'load' });
+    await operatorPage.waitForSelector('#auth-email', { timeout: 15000 });
+    await operatorPage.fill('#auth-email', operatorEmail);
+    await operatorPage.fill('#auth-password', temporaryPassword);
+    await operatorPage.click('button.auth__submit');
+    await operatorPage.waitForSelector('#pw-new', { timeout: 15000 });
+    const chosen = `Settings-Operator-${Date.now()}`;
+    await operatorPage.fill('#pw-current', temporaryPassword);
+    await operatorPage.fill('#pw-new', chosen);
+    await operatorPage.fill('#pw-confirm', chosen);
+    await operatorPage.click('form.auth__form button[type=submit]');
+    await operatorPage.waitForSelector('.auth', { state: 'detached', timeout: 15000 });
+    await operatorPage.evaluate(() => { location.hash = '#/settings'; });
+    await operatorPage.waitForFunction(() => document.querySelector('.settings-grid'), null, { timeout: 10000 });
+    await operatorPage.waitForTimeout(400);
+    const lockedCount = await operatorPage.$$eval('.settings-field__lock', (n) => n.length);
+    ok('standard-user role sees admin-only fields locked', lockedCount > 0, `${lockedCount} locked fields`);
+
+    const userTab = await operatorPage.$('.tabs .tab');
+    await userTab.click();
+    await operatorPage.waitForTimeout(300);
+    const companyInputDisabled = await operatorPage.$eval('input[id*="company"]', (n) => n.disabled);
+    ok('company fields disabled for standard user', companyInputDisabled === true);
+    const saveAttempt = await operatorContext.request.patch(`${BASE}/api/settings`, { data: { company: { name: 'Hijacked' } } });
+    ok('the server refuses settings changes from an operator', saveAttempt.status() === 403, `HTTP ${saveAttempt.status()}`);
+  } finally {
+    await operatorContext.close();
+    if (member?.id) await page.context().request.delete(`${BASE}/api/admin/members/${member.id}`);
+  }
 
   // --- Responsive check ---
   await page.setViewportSize({ width: 390, height: 844 });

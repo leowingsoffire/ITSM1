@@ -1,10 +1,13 @@
 /**
  * Shared browser-suite helpers.
  *
- * Every e2e script has to get past the same two front doors — the onboarding
- * wizard (shown to visitors with no workspace) and the demo passphrase gate —
- * and every script needs somewhere to put screenshots. Keeping that in one
- * place means a change to the entry flow is made once, not four times.
+ * Every suite signs in through the same front door and writes screenshots to
+ * the same place; keeping that here means a change to the entry flow is made
+ * once, not in every suite.
+ *
+ * The account a suite signs in as comes from the environment and is never
+ * hard-coded: E2E_EMAIL / E2E_PASSWORD, falling back to ADMIN_EMAIL /
+ * ADMIN_PASSWORD (the platform administrator the server seeds on first boot).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,35 +29,49 @@ export function artifact(name) {
   return path.join(ARTIFACT_DIR, name);
 }
 
-/**
- * Dismisses the onboarding wizard via its explicit "use the shared demo
- * workspace" opt-out. Returns false when no wizard was shown (a visitor who
- * already has a workspace), so callers can assert on either path.
- * @returns {Promise<boolean>}
- */
-export async function dismissOnboarding(page, timeout = 8000) {
-  const wizard = await page.waitForSelector('.onboard', { timeout }).catch(() => null);
-  if (!wizard) return false;
-  await page.click('.onboard-skip');
-  await page.waitForSelector('.onboard', { state: 'detached', timeout: 10000 });
-  return true;
+/** @returns {{ email: string, password: string }} the account the suites sign in as. */
+export function credentials() {
+  const email = process.env.E2E_EMAIL ?? process.env.ADMIN_EMAIL;
+  const password = process.env.E2E_PASSWORD ?? process.env.ADMIN_PASSWORD;
+  if (!email || !password) {
+    throw new Error('Set E2E_EMAIL and E2E_PASSWORD (or ADMIN_EMAIL and ADMIN_PASSWORD) to the account the browser suites sign in as.');
+  }
+  return { email, password };
+}
+
+function resolveAccount(account) {
+  return account?.email && account?.password ? account : credentials();
 }
 
 /**
- * Passes the demo passphrase gate.
+ * Signs in through the real sign-in screen and waits for the workspace shell.
  * @param {import('playwright-core').Page} page
- * @param {{ passphrase?: string, role?: 'admin'|'user' }} [options]
+ * @param {{ email?: string, password?: string }} [account]
  */
-export async function signIn(page, { passphrase = 'vgc', role = null } = {}) {
-  await page.waitForSelector('#auth-passphrase', { timeout: 15000 });
-  if (role) {
-    const button = await page.$(`.auth__role-toggle button[data-role="${role}"]`);
-    if (button) await button.click();
-  }
-  await page.fill('#auth-passphrase', passphrase);
-  await page.click('button.auth__submit', { force: true });
+export async function signIn(page, account) {
+  const { email, password } = resolveAccount(account);
+  await page.waitForSelector('#auth-email', { timeout: 15000 });
+  await page.fill('#auth-email', email);
+  await page.fill('#auth-password', password);
+  await page.click('button.auth__submit');
   await page.waitForSelector('.auth', { state: 'detached', timeout: 15000 });
   await page.waitForSelector('div.view', { timeout: 15000 });
+}
+
+/**
+ * Signs in over the API. The browser context's request client shares its
+ * cookie jar, so pages opened afterwards are already signed in.
+ * @param {import('playwright-core').BrowserContext} context
+ * @param {string} base
+ * @param {{ email?: string, password?: string }} [account]
+ */
+export async function apiSignIn(context, base, account) {
+  const { email, password } = resolveAccount(account);
+  const response = await context.request.post(`${base}/api/auth/login`, { data: { email, password } });
+  if (!response.ok()) {
+    throw new Error(`API sign-in failed for ${email}: HTTP ${response.status()} ${(await response.text()).slice(0, 200)}`);
+  }
+  return response.json();
 }
 
 /**
@@ -91,43 +108,37 @@ export async function settleUi(page, label = 'view') {
   }
 }
 
-/** Navigates to the app and walks all the way into the workspace shell. */
-export async function enterWorkspace(page, base, options = {}) {
+/** Navigates to the app and signs in through the sign-in screen. */
+export async function enterWorkspace(page, base, account) {
   await page.goto(base, { waitUntil: 'load' });
-  await dismissOnboarding(page);
-  await signIn(page, options);
+  await signIn(page, account);
 }
 
 /**
- * Provisions a throwaway workspace and binds the browser to it *before* the
- * app boots, so a suite that edits company details, branding or templates
- * mutates only its own tenant. Without this, running the settings suites
- * overwrites the shared demo workspace that developers and demos rely on.
+ * Signs in over the API, provisions a throwaway workspace (the signed-in user
+ * becomes its administrator) and pins the tab to it before the app boots, so a
+ * suite that edits company details, branding or templates mutates only its own
+ * tenant rather than the shared workspace that developers and demos rely on.
+ *
+ * Navigate to `base` afterwards: the page opens straight into the workspace.
  *
  * @param {import('playwright-core').Page} page
  * @param {string} base
- * @param {string} [label] company name for the throwaway workspace
+ * @param {string} [label] company name prefix for the throwaway workspace
+ * @param {{ email?: string, password?: string }} [account]
  * @returns {Promise<{ id: string, companyName: string }>} the created tenant
  */
-export async function useIsolatedWorkspace(page, base, label = 'E2E Test Workspace') {
+export async function useIsolatedWorkspace(page, base, label = 'E2E Test Workspace', account) {
+  const context = page.context();
+  await apiSignIn(context, base, account);
   const companyName = `${label} ${Date.now()}`;
-  const response = await fetch(`${base}/api/onboarding`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ companyName, businessType: 'Professional Services', country: 'Singapore' })
+  const response = await context.request.post(`${base}/api/onboarding`, {
+    data: { companyName, businessType: 'Professional Services', country: 'Singapore' }
   });
-  if (!response.ok) {
-    throw new Error(`Could not provision an isolated workspace: HTTP ${response.status}`);
+  if (!response.ok()) {
+    throw new Error(`Could not provision an isolated workspace: HTTP ${response.status()} ${(await response.text()).slice(0, 200)}`);
   }
   const { tenant } = await response.json();
-
-  await page.addInitScript(
-    ({ id, meta }) => {
-      localStorage.setItem('vgc.tenant-id', id);
-      localStorage.setItem('vgc.tenant-meta', JSON.stringify(meta));
-    },
-    { id: tenant.id, meta: { companyName: tenant.companyName, businessType: tenant.businessType } }
-  );
-
+  await page.addInitScript((id) => sessionStorage.setItem('vgc.tab-workspace', id), tenant.id);
   return tenant;
 }

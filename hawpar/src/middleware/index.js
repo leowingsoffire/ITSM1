@@ -4,10 +4,11 @@
  */
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
-import { AppError, ErrorCode, rateLimited, unauthorized } from '../lib/errors.js';
+import { AppError, ErrorCode, forbidden, rateLimited } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
 import { runWithTenant, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 import { tenantExists } from '../services/tenant.service.js';
+import { roleFor } from './auth.js';
 
 const CORRELATION_HEADER = 'x-correlation-id';
 const TENANT_HEADER = 'x-tenant-id';
@@ -24,21 +25,41 @@ export function correlationId(request, response, next) {
 }
 
 /**
- * Resolves the requesting workspace ("tenant") from the `x-tenant-id` header
- * set by the customer's browser after completing the onboarding wizard (see
- * `public/js/tenant.js`), and binds it to the async context for the rest of
- * the request so every service call downstream is scoped to that workspace
- * without needing the id threaded through every function signature.
+ * Resolves the requesting workspace ("tenant") and binds it to the async
+ * context for the rest of the request so every service call downstream is
+ * scoped to that workspace without threading the id through every signature.
+ *
+ * The workspace is chosen from, in order: the `x-tenant-id` header, a
+ * `?tenantId=` query parameter on GET requests (EventSource streams and
+ * download links cannot set headers), and the session's active workspace.
+ * The choice is only a selector: the caller must hold a role in the workspace
+ * (see `roleFor`) or the request is refused, so a session for one company can
+ * never read another's data by changing the header. Workspace API keys are
+ * pinned to their own workspace.
  *
  * Unknown tenant ids are rejected outright (404) rather than silently falling
- * back to the shared default workspace — that would otherwise let a stale or
- * guessed id leak into someone else's demo data. Requests with no header at
- * all keep working exactly as before onboarding existed: they run against the
- * original, un-namespaced "default" workspace.
+ * back to the shared default workspace.
  */
 export function tenantContext(request, response, next) {
-  const requested = request.get(TENANT_HEADER)?.trim();
-  const tenantId = requested || DEFAULT_TENANT_ID;
+  const principal = request.principal;
+  const headerTenant = request.get(TENANT_HEADER)?.trim();
+  const queryTenant =
+    request.method === 'GET' && typeof request.query?.tenantId === 'string' ? request.query.tenantId.trim() : '';
+  const requested = headerTenant || queryTenant;
+
+  let tenantId;
+  if (!principal) {
+    // Only the open discovery endpoints get here anonymously; they always
+    // describe the shared workspace so no tenant's branding leaks.
+    tenantId = DEFAULT_TENANT_ID;
+  } else if (principal.type === 'api-key') {
+    if (requested && requested !== principal.tenantId) {
+      return next(forbidden('This API key belongs to a different workspace.'));
+    }
+    tenantId = principal.tenantId;
+  } else {
+    tenantId = requested || principal.tenantId || DEFAULT_TENANT_ID;
+  }
 
   if (!tenantExists(tenantId)) {
     return next(
@@ -51,9 +72,29 @@ export function tenantContext(request, response, next) {
     );
   }
 
+  if (principal) {
+    const role = roleFor(principal, tenantId);
+    if (!role) return next(forbidden('You are not a member of this workspace.', { tenantId }));
+    request.role = role;
+    request.actor = principal.email;
+  }
+
   request.tenantId = tenantId;
   response.setHeader('x-tenant-id', tenantId);
   return runWithTenant(tenantId, next);
+}
+
+/**
+ * Multer's busboy-based multipart parsing consumes the request as a stream,
+ * which can lose Node's AsyncLocalStorage continuation by the time its
+ * callback fires. `request.tenantId` was set synchronously by `tenantContext`
+ * before that, so re-enter the workspace context from it after every
+ * multipart parser. Without this, an upload could be stored in the default
+ * workspace instead of the caller's.
+ */
+export function bindTenantContext(request, response, next) {
+  if (!request.tenantId) return next();
+  return runWithTenant(request.tenantId, next);
 }
 
 export function securityHeaders(request, response, next) {
@@ -88,27 +129,11 @@ export function cors(request, response, next) {
   if (origin && config.security.corsAllowedOrigins.includes(origin)) {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Vary', 'Origin');
-    response.setHeader('Access-Control-Allow-Headers', 'content-type, x-api-key, x-correlation-id, x-tenant-id, x-user-role, x-user-operator');
+    response.setHeader('Access-Control-Allow-Headers', 'content-type, x-api-key, x-correlation-id, x-tenant-id');
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   }
   if (request.method === 'OPTIONS') return response.sendStatus(204);
   return next();
-}
-
-/** Constant-time-ish comparison to avoid leaking key length through timing. */
-function keysMatch(provided, expected) {
-  if (typeof provided !== 'string' || provided.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let index = 0; index < expected.length; index += 1) {
-    mismatch |= provided.charCodeAt(index) ^ expected.charCodeAt(index);
-  }
-  return mismatch === 0;
-}
-
-export function apiKeyAuth(request, response, next) {
-  if (!config.security.apiKey) return next();
-  if (keysMatch(request.get('x-api-key'), config.security.apiKey)) return next();
-  return next(unauthorized());
 }
 
 const rateBuckets = new Map();
@@ -127,10 +152,10 @@ function sweepRateBuckets(now) {
   }
 }
 
-/** @param {'api'|'upload'} scope */
+/** @param {'api'|'upload'|'auth'} scope */
 export function rateLimit(scope = 'api') {
-  const maximum =
-    scope === 'upload' ? config.security.rateLimit.uploadPerMinute : config.security.rateLimit.apiPerMinute;
+  const limits = config.security.rateLimit;
+  const maximum = scope === 'upload' ? limits.uploadPerMinute : scope === 'auth' ? limits.authPerMinute : limits.apiPerMinute;
   return (request, response, next) => {
     const identity = `${scope}:${request.ip ?? 'unknown'}`;
     const now = Date.now();

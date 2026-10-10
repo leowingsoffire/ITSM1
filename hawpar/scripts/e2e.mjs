@@ -1,19 +1,23 @@
 /**
  * VGC OCR Intelligence — end-to-end browser suite.
  *
- * Covers the complete user journeys (login → ingest → workflow action →
- * agent trace → accuracy → Azure console), responsive layouts at three
- * breakpoints, keyboard accessibility and console/network error hygiene.
+ * Covers the complete user journeys (sign-in → self-service signup → ingest →
+ * workflow action → agent trace → accuracy → Azure console), responsive layouts
+ * at three breakpoints, keyboard accessibility and console/network error hygiene.
  *
  * Run: node scripts/e2e.mjs   (server must be listening on E2E_BASE / :8080)
+ * Signs in with E2E_EMAIL/E2E_PASSWORD (or ADMIN_EMAIL/ADMIN_PASSWORD). The
+ * signup journey creates a real workspace, so it runs against a local server,
+ * or remotely only with E2E_ALLOW_SIGNUP=1.
  */
 import { chromium } from 'playwright-core';
-import { ARTIFACT_DIR, CHROMIUM_EXE, dismissOnboarding, signIn } from './lib/e2e-session.mjs';
+import { ARTIFACT_DIR, CHROMIUM_EXE, credentials, signIn } from './lib/e2e-session.mjs';
 import { findLowContrastText } from './lib/contrast.mjs';
 
 const EXE = CHROMIUM_EXE;
-const BASE = process.env.E2E_BASE ?? 'http://127.0.0.1:8080';
-const PASSPHRASE = 'vgc';
+const BASE = (process.env.E2E_BASE ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
+const LOCAL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE);
+const ALLOW_SIGNUP = LOCAL || process.env.E2E_ALLOW_SIGNUP === '1';
 
 const results = [];
 const ok = (name, pass, detail = '') => {
@@ -39,7 +43,9 @@ const ROUTES = [
   'search',
   'azure',
   'cost',
-  'blueprint'
+  'blueprint',
+  'settings',
+  'admin'
 ];
 
 const browser = await chromium.launch({ executablePath: EXE, headless: true });
@@ -80,7 +86,6 @@ async function newSession(viewport) {
   });
 
   await page.goto(BASE, { waitUntil: 'load' });
-  await dismissOnboarding(page);
   await signIn(page);
 
   return { context, page, pageErrors, consoleErrors, cspViolations, badResponses };
@@ -192,15 +197,24 @@ async function layoutProblems(page) {
     for (const node of document.querySelectorAll('#view-root *')) {
       const rect = node.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) continue;
-      // A table may scroll horizontally inside .table-wrap — that is intentional.
-      if (node.closest('.table-wrap')) continue;
-      if (rect.right > docWidth + 2) {
-        const label =
-          typeof node.className === 'string' && node.className
-            ? `${node.tagName.toLowerCase()}.${node.className.trim().split(/\s+/).join('.')}`
-            : node.tagName.toLowerCase();
-        problems.push(`${label} overflows right edge by ${Math.round(rect.right - docWidth)}px`);
+      if (rect.right <= docWidth + 2) continue;
+      // Content inside a sideways-scrolling container (a wide table, a tab
+      // strip) is reachable by scrolling it; the container itself is still
+      // checked, so a strip wider than the screen is caught.
+      let scroller = null;
+      for (let parent = node.parentElement; parent && parent.id !== 'view-root'; parent = parent.parentElement) {
+        const overflowX = getComputedStyle(parent).overflowX;
+        if (overflowX === 'auto' || overflowX === 'scroll') {
+          scroller = parent;
+          break;
+        }
       }
+      if (scroller) continue;
+      const label =
+        typeof node.className === 'string' && node.className
+          ? `${node.tagName.toLowerCase()}.${node.className.trim().split(/\s+/).join('.')}`
+          : node.tagName.toLowerCase();
+      problems.push(`${label} overflows right edge by ${Math.round(rect.right - docWidth)}px`);
       if (problems.length > 6) break;
     }
     return problems;
@@ -213,120 +227,171 @@ const desktop = await newSession(VIEWPORTS[0]);
 try {
   const { page } = desktop;
 
-  ok('login gate accepted the demo passphrase and dismissed', true);
+  const signedIn = await page.evaluate(async () => (await fetch('/api/auth/session')).json());
+  ok('signed in with a real account', signedIn.authenticated === true && Boolean(signedIn.user?.email), signedIn.user?.email ?? '');
 
-  // Wrong passphrase is genuinely rejected (validation works).
+  // Wrong credentials are genuinely rejected (validation works). An unknown
+  // address is used so that no real account collects a lockout strike.
   const rejectContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const rejectPage = await rejectContext.newPage();
   await rejectPage.goto(BASE, { waitUntil: 'load' });
-  await dismissOnboarding(rejectPage);
-  await rejectPage.waitForSelector('#auth-passphrase', { timeout: 15000 });
-  await rejectPage.fill('#auth-passphrase', 'not-the-passphrase');
-  await rejectPage.click('button.auth__submit', { force: true });
-  const authError = await rejectPage.waitForSelector('.auth__error', { timeout: 8000 });
-  ok('invalid passphrase is rejected with an inline error', Boolean(authError));
+  await rejectPage.waitForSelector('#auth-email', { timeout: 15000 });
+  await rejectPage.click('button.auth__submit');
+  const blankError = await rejectPage.$eval('.auth__error', (node) => node.textContent.trim()).catch(() => '');
+  ok('signing in with blank fields is refused inline', blankError.length > 0, blankError);
+  await rejectPage.fill('#auth-email', `nobody.${Date.now()}@example.invalid`);
+  await rejectPage.fill('#auth-password', 'not-the-password');
+  await rejectPage.click('button.auth__submit');
+  const authError = await rejectPage
+    .waitForFunction(() => {
+      const text = document.querySelector('.auth__error')?.textContent.trim() ?? '';
+      return /incorrect/i.test(text) ? text : false;
+    }, null, { timeout: 8000 })
+    .then((handle) => handle.jsonValue())
+    .catch(() => '');
+  ok('invalid credentials are rejected with an inline error', Boolean(authError), String(authError));
   await rejectContext.close();
 
-  /* ── Onboarding: a first-time visitor provisions their own workspace ─── */
-  const onboardContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const onboardPage = await onboardContext.newPage();
-  const onboardErrors = [];
-  onboardPage.on('pageerror', (error) => onboardErrors.push(String(error)));
-  try {
-    await onboardPage.emulateMedia({ reducedMotion: 'reduce' });
-    await onboardPage.goto(BASE, { waitUntil: 'load' });
+  /* ── Signup: a first-time visitor provisions their own workspace ────── */
+  if (!signedIn.options?.selfSignup) {
+    console.log('SKIP  self-service signup journey — this deployment is invitation-only (SELF_SIGNUP=false)');
+  } else if (!ALLOW_SIGNUP) {
+    console.log('SKIP  self-service signup journey — creates a real workspace; set E2E_ALLOW_SIGNUP=1 to run it remotely');
+  } else {
+    const onboardContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const onboardPage = await onboardContext.newPage();
+    const onboardErrors = [];
+    onboardPage.on('pageerror', (error) => onboardErrors.push(String(error)));
+    try {
+      await onboardPage.emulateMedia({ reducedMotion: 'reduce' });
+      await onboardPage.goto(BASE, { waitUntil: 'load' });
 
-    await onboardPage.waitForSelector('.onboard', { timeout: 15000 });
-    ok('a first-time visitor is shown the onboarding wizard', true);
+      await onboardPage.waitForSelector('#auth-create-workspace', { timeout: 15000 });
+      await onboardPage.click('#auth-create-workspace');
+      await onboardPage.waitForSelector('.onboard', { timeout: 15000 });
+      ok('a first-time visitor can open the signup wizard from the sign-in screen', true);
 
-    // Step 1 validation: the company name is mandatory.
-    await onboardPage.click('.onboard-actions .btn--primary');
-    const nameError = await onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
-    ok('onboarding rejects a blank company name', nameError.length > 0, nameError);
+      // Step 1 validation: the company name is mandatory.
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const nameError = await onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
+      ok('onboarding rejects a blank company name', nameError.length > 0, nameError);
 
-    // Step 1 validation: a malformed optional email is refused.
-    const companyName = `E2E Onboarding ${Date.now()}`;
-    await onboardPage.fill('#ob-company-name', companyName);
-    await onboardPage.fill('#ob-contact-email', 'not-an-email');
-    await onboardPage.click('.onboard-actions .btn--primary');
-    const emailError = await onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
-    ok('onboarding rejects a malformed contact email', /valid contact email/i.test(emailError), emailError);
+      // Step 1: the company profile. In signup mode the account step collects
+      // the person's details, so the optional contact fields are not shown.
+      const stamp = Date.now().toString(36);
+      const companyName = `E2E Onboarding ${stamp}`;
+      const ownerEmail = `owner.${stamp}@e2e.vgc.test`;
+      const ownerPassword = `Owner-${stamp}-Pass!`;
+      ok('signup does not ask for the contact details twice', (await onboardPage.$('#ob-contact-email')) === null);
+      await onboardPage.fill('#ob-company-name', companyName);
+      await onboardPage.selectOption('#ob-country', 'Malaysia');
+      await onboardPage.click('.onboard-actions .btn--primary');
 
-    await onboardPage.fill('#ob-contact-email', 'e2e@example.com');
-    await onboardPage.fill('#ob-contact-name', 'E2E Tester');
-    await onboardPage.selectOption('#ob-country', 'Malaysia');
-    await onboardPage.click('.onboard-actions .btn--primary');
+      // Step 2 validation: an industry must be chosen.
+      await onboardPage.waitForSelector('#ob-business-type', { timeout: 10000 });
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const typeError = await onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
+      ok('onboarding requires a business type', typeError.length > 0, typeError);
 
-    // Step 2 validation: an industry must be chosen.
-    await onboardPage.waitForSelector('#ob-business-type', { timeout: 10000 });
-    await onboardPage.click('.onboard-actions .btn--primary');
-    const typeError = await onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
-    ok('onboarding requires a business type', typeError.length > 0, typeError);
+      await onboardPage.selectOption('#ob-business-type', 'Logistics & Supply Chain');
+      await onboardPage.click('.onboard-actions .btn--primary');
 
-    await onboardPage.selectOption('#ob-business-type', 'Logistics & Supply Chain');
-    await onboardPage.click('.onboard-actions .btn--primary');
+      // Step 3: the administrator account is validated field by field.
+      await onboardPage.waitForSelector('#ob-account-email', { timeout: 10000 });
+      const accountError = async () => onboardPage.$eval('.onboard-error', (node) => node.textContent.trim());
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const nameRequired = await accountError();
+      ok('onboarding asks for the administrator name', /your name/i.test(nameRequired), nameRequired);
+      await onboardPage.fill('#ob-account-name', 'E2E Tester');
+      await onboardPage.fill('#ob-account-email', 'not-an-email');
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const emailError = await accountError();
+      ok('onboarding rejects a malformed sign-in email', /valid work email/i.test(emailError), emailError);
+      await onboardPage.fill('#ob-account-email', ownerEmail);
+      await onboardPage.fill('#ob-account-password', 'short');
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const tooShort = await accountError();
+      ok('onboarding enforces the password length policy', /at least \d+ characters/i.test(tooShort), tooShort);
+      await onboardPage.fill('#ob-account-password', ownerPassword);
+      await onboardPage.fill('#ob-account-confirm', `${ownerPassword}-typo`);
+      await onboardPage.click('.onboard-actions .btn--primary');
+      const mismatch = await accountError();
+      ok('onboarding refuses mismatched passwords', /do not match/i.test(mismatch), mismatch);
+      await onboardPage.fill('#ob-account-confirm', ownerPassword);
+      await onboardPage.click('.onboard-actions .btn--primary');
 
-    // Step 3: the review step must echo back exactly what was entered.
-    await onboardPage.waitForSelector('.onboard-summary', { timeout: 10000 });
-    const summary = await onboardPage.$eval('.onboard-summary', (node) => node.textContent);
-    ok(
-      'onboarding review step echoes the entered profile',
-      summary.includes(companyName) && summary.includes('Malaysia') && summary.includes('Logistics & Supply Chain'),
-      summary.slice(0, 120)
-    );
+      // Step 4: the review step must echo back exactly what was entered.
+      await onboardPage.waitForSelector('.onboard-summary', { timeout: 10000 });
+      const summary = await onboardPage.$eval('.onboard-summary', (node) => node.textContent);
+      ok(
+        'onboarding review step echoes the entered profile and administrator',
+        summary.includes(companyName) && summary.includes('Malaysia') && summary.includes('Logistics & Supply Chain') && summary.includes(ownerEmail),
+        summary.slice(0, 160)
+      );
 
-    // Back/forward navigation must preserve what was typed.
-    await onboardPage.click('.onboard-actions .btn--ghost');
-    await onboardPage.waitForSelector('#ob-business-type', { timeout: 10000 });
-    const retainedType = await onboardPage.$eval('#ob-business-type', (node) => node.value);
-    ok('onboarding retains answers when stepping back', retainedType === 'Logistics & Supply Chain', retainedType);
-    await onboardPage.click('.onboard-actions .btn--primary');
-    await onboardPage.waitForSelector('.onboard-summary', { timeout: 10000 });
+      // Back/forward navigation must preserve what was typed.
+      await onboardPage.click('.onboard-actions .btn--ghost');
+      await onboardPage.waitForSelector('#ob-account-email', { timeout: 10000 });
+      await onboardPage.click('.onboard-actions .btn--ghost');
+      await onboardPage.waitForSelector('#ob-business-type', { timeout: 10000 });
+      const retainedType = await onboardPage.$eval('#ob-business-type', (node) => node.value);
+      ok('onboarding retains answers when stepping back', retainedType === 'Logistics & Supply Chain', retainedType);
+      await onboardPage.click('.onboard-actions .btn--primary');
+      await onboardPage.waitForSelector('#ob-account-email', { timeout: 10000 });
+      await onboardPage.click('.onboard-actions .btn--primary');
+      await onboardPage.waitForSelector('.onboard-summary', { timeout: 10000 });
 
-    await onboardPage.click('.onboard-actions .btn--primary');
-    await onboardPage.waitForSelector('.onboard', { state: 'detached', timeout: 20000 });
-    ok('creating a workspace dismisses the wizard', true);
+      await onboardPage.click('#onboard-create');
+      await onboardPage.waitForSelector('.onboard', { state: 'detached', timeout: 20000 });
+      await onboardPage.waitForSelector('#view-root div.view', { timeout: 20000 });
+      ok('creating a workspace signs the new administrator straight in', (await onboardPage.$('.auth')) === null);
 
-    const tenantId = await onboardPage.evaluate(() => localStorage.getItem('vgc.tenant-id'));
-    ok('the created workspace id is persisted client-side', Boolean(tenantId), String(tenantId));
+      const created = await onboardPage.evaluate(async () => (await fetch('/api/auth/session')).json());
+      ok(
+        'the new account administers the new workspace',
+        created.user?.email === ownerEmail && created.workspace?.name === companyName && created.workspace?.role === 'admin',
+        `${created.user?.email} · ${created.workspace?.name} · ${created.workspace?.role}`
+      );
+      const tenantId = created.workspace?.id;
+      const pinned = await onboardPage.evaluate(() => sessionStorage.getItem('vgc.tab-workspace'));
+      ok('the tab is pinned to the created workspace', Boolean(tenantId) && pinned === tenantId, String(pinned));
 
-    await signIn(onboardPage);
+      // Isolation: the new workspace opens with its own company profile…
+      const seeded = await onboardPage.evaluate(async () => {
+        const response = await fetch('/api/settings');
+        return (await response.json()).settings?.company?.name ?? null;
+      });
+      ok('the new workspace is seeded with the customer company profile', seeded === companyName, String(seeded));
 
-    // Isolation: the new workspace opens with its own company profile…
-    const seeded = await onboardPage.evaluate(async (id) => {
-      const response = await fetch('/api/settings', { headers: { 'x-tenant-id': id } });
-      return (await response.json()).settings?.company?.name ?? null;
-    }, tenantId);
-    ok('the new workspace is seeded with the customer company profile', seeded === companyName, String(seeded));
+      // …none of another workspace's documents, and no way into it.
+      const isolated = await onboardPage.evaluate(async (otherId) => {
+        const mine = await (await fetch('/api/documents?pageSize=1')).json();
+        const other = await fetch('/api/documents?pageSize=1', { headers: { 'x-tenant-id': otherId } });
+        return { mine: mine.total, otherStatus: other.status };
+      }, signedIn.workspace?.id);
+      ok(
+        'documents are isolated to the workspace that owns them',
+        isolated.mine === 0 && isolated.otherStatus === 403,
+        `own ${isolated.mine} · another workspace answers ${isolated.otherStatus}`
+      );
 
-    // …and none of the shared demo workspace's documents.
-    const isolated = await onboardPage.evaluate(async (id) => {
-      const mine = await (await fetch('/api/documents?pageSize=1', { headers: { 'x-tenant-id': id } })).json();
-      const shared = await (await fetch('/api/documents?pageSize=1')).json();
-      return { mine: mine.total, shared: shared.total };
-    }, tenantId);
-    ok(
-      'documents are isolated to the workspace that owns them',
-      isolated.mine === 0 && isolated.shared >= 0,
-      `own ${isolated.mine} vs shared ${isolated.shared}`
-    );
+      // The created workspace must be identifiable from the shell, not just implied.
+      await onboardPage.click('#sign-out');
+      await onboardPage.waitForSelector('.account-menu:not([hidden])', { timeout: 8000 });
+      const menuWorkspace = await onboardPage.$eval('.account-menu__value', (node) => node.textContent.trim());
+      ok('the account menu names the customer workspace', menuWorkspace === companyName, menuWorkspace);
+      await onboardPage.keyboard.press('Escape');
 
-    // The created workspace must be identifiable from the shell, not just implied.
-    await onboardPage.click('#sign-out');
-    await onboardPage.waitForSelector('.account-menu:not([hidden])', { timeout: 8000 });
-    const menuWorkspace = await onboardPage.$eval('.account-menu__value', (node) => node.textContent.trim());
-    ok('the account menu names the customer workspace', menuWorkspace === companyName, menuWorkspace);
-    await onboardPage.keyboard.press('Escape');
+      // The session survives a reload — neither the wizard nor the sign-in screen returns.
+      await onboardPage.reload({ waitUntil: 'load' });
+      await onboardPage.waitForSelector('#view-root div.view', { timeout: 20000 });
+      const promptedAgain = (await onboardPage.$('.onboard')) !== null || (await onboardPage.$('.auth')) !== null;
+      ok('a returning administrator stays signed in to their workspace', !promptedAgain);
 
-    // The workspace survives a reload — the wizard must not reappear.
-    await onboardPage.reload({ waitUntil: 'load' });
-    await onboardPage.waitForSelector('div.view', { timeout: 20000 });
-    const wizardAgain = await onboardPage.$('.onboard');
-    ok('a returning visitor is not asked to onboard again', wizardAgain === null);
-
-    ok('no uncaught page errors during onboarding', onboardErrors.length === 0, onboardErrors.slice(0, 2).join(' | '));
-  } finally {
-    await onboardContext.close();
+      ok('no uncaught page errors during onboarding', onboardErrors.length === 0, onboardErrors.slice(0, 2).join(' | '));
+    } finally {
+      await onboardContext.close();
+    }
   }
 
   // Branding.
@@ -339,21 +404,23 @@ try {
   await page.click('#sign-out');
   await page.waitForSelector('.account-menu:not([hidden])', { timeout: 8000 });
   const accountWorkspace = await page.$eval('.account-menu__value', (node) => node.textContent.trim());
-  ok('account menu names the active workspace', accountWorkspace === 'Shared demo workspace', accountWorkspace);
+  ok('account menu names the active workspace', accountWorkspace === signedIn.workspace?.name, accountWorkspace);
+  const accountName = await page.$eval('.account-menu__name', (node) => node.textContent.trim());
+  ok('account menu names the signed-in person', accountName === (signedIn.user?.name || signedIn.user?.email), accountName);
   const accountActions = await page.$$eval('.account-menu__item', (nodes) => nodes.map((node) => node.textContent.trim()));
   ok(
-    'account menu offers lock and switch actions',
-    accountActions.some((label) => /lock/i.test(label)) && accountActions.some((label) => /switch/i.test(label)),
+    'account menu offers password, device and sign-out actions',
+    ['Change password', 'Signed-in devices', 'Sign out'].every((label) => accountActions.some((action) => action.includes(label))),
     accountActions.join(' | ')
   );
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.querySelector('.account-menu')?.hidden === true, null, { timeout: 5000 });
   ok('account menu closes on Escape', true);
 
-  // Declining onboarding must be remembered — otherwise every reload re-prompts.
+  // The session cookie must survive a reload — otherwise every reload re-prompts.
   await page.reload({ waitUntil: 'load' });
-  await page.waitForSelector('div.view', { timeout: 20000 });
-  ok('declining onboarding is remembered across a reload', (await page.$('.onboard')) === null);
+  await page.waitForSelector('#view-root div.view', { timeout: 20000 });
+  ok('the session survives a reload without signing in again', (await page.$('.auth')) === null);
 
   // Every route renders.
   for (const route of ROUTES) {
@@ -596,14 +663,12 @@ try {
     const steps = await page.$$eval('.timeline__item', (nodes) => nodes.length);
     ok('workflow detail renders the step timeline', steps > 0, `${steps} steps`);
 
-    // Validation: blank actor must be refused client-side.
-    await page.fill('#wf-actor', '');
-    await page.click('button:has-text("Apply action")');
-    const actorError = await page.$eval('#wf-actor-error', (node) => node.textContent.trim());
-    ok('workflow form rejects an empty actor', actorError.length > 0, actorError);
+    // The audit actor is the signed-in person, never a typed-in name.
+    const actorNote = await page.$eval('#wf-actor-help', (node) => node.textContent.trim());
+    ok('workflow form records the signed-in person as the actor', actorNote.includes(signedIn.user?.email ?? '\u0000'), actorNote);
+    ok('workflow form offers no free-text actor field', (await page.$('#wf-actor')) === null);
 
     // Validation: reassign without an assignee must be refused.
-    await page.fill('#wf-actor', 'e2e.tester@vgc.com');
     await page.selectOption('#wf-action', 'reassign');
     await page.click('button:has-text("Apply action")');
     const assigneeError = await page.$eval('#wf-assignee-error', (node) => node.textContent.trim());
@@ -629,13 +694,14 @@ try {
     );
     const after = await page.evaluate(async (id) => {
       const body = await (await fetch(`/api/workflows/${id}`)).json();
-      return { step: body.currentStepId, history: body.history.length, status: body.status };
+      return { step: body.currentStepId, history: body.history.length, status: body.status, actor: body.history.at(-1)?.actor };
     }, targetDocument);
     ok(
       'approving a step advances the workflow and writes audit history',
       after.history > before.history && after.step !== before.step,
       `${before.step} → ${after.step}, history ${before.history} → ${after.history}`
     );
+    ok('the audit history names the signed-in approver', after.actor === signedIn.user?.email, String(after.actor));
 
     // Persistence: the transition survives a full reload.
     await page.reload({ waitUntil: 'load' });
@@ -716,7 +782,11 @@ try {
     await page.waitForSelector('dialog.confirm-dialog[open]', { timeout: 5000 });
     await page.click('dialog.confirm-dialog button:has-text("Cancel")');
     await page.waitForTimeout(200);
-    const stillExists = await fetch(`${BASE}/api/documents/${encodeURIComponent(deleteTargetId)}`).then((r) => r.status);
+    // Probe through the context's request client: it carries the session
+    // cookie but is not page traffic, so the expected 404 after deletion is
+    // not mistaken for an application error by the console/network checks.
+    const documentStatus = async (id) => (await desktop.context.request.get(`${BASE}/api/documents/${encodeURIComponent(id)}`)).status();
+    const stillExists = await documentStatus(deleteTargetId);
     ok('cancelling document delete keeps the document', stillExists === 200, `status=${stillExists}`);
 
     await page.click('button:has-text("Delete")');
@@ -724,7 +794,7 @@ try {
     await page.click('dialog.confirm-dialog button:has-text("Delete document")');
     await page.waitForFunction(() => location.hash === '#/documents', null, { timeout: 10000 });
     await settle(page);
-    const deletedStatus = await fetch(`${BASE}/api/documents/${encodeURIComponent(deleteTargetId)}`).then((r) => r.status);
+    const deletedStatus = await documentStatus(deleteTargetId);
     ok('confirming document delete removes it and returns to the library', deletedStatus === 404, `status=${deletedStatus}`);
   }
 
@@ -787,6 +857,22 @@ try {
 
 /* ── Responsive sweep ──────────────────────────────────────────────────── */
 
+// The member-controls check needs at least one listed member, and a workspace
+// can legitimately have none (a platform administrator is not listed). Add a
+// temporary operator to the workspace the sweep signs in to, removed below.
+const fixtureContext = await browser.newContext();
+const { email: adminEmail, password: adminPassword } = credentials();
+await fixtureContext.request.post(`${BASE}/api/auth/login`, { data: { email: adminEmail, password: adminPassword } });
+const sweepWorkspace = (await (await fixtureContext.request.get(`${BASE}/api/auth/session`)).json()).workspace?.id;
+const fixtureHeaders = sweepWorkspace ? { 'x-tenant-id': sweepWorkspace } : {};
+const fixtureMember = await fixtureContext.request.post(`${BASE}/api/admin/members`, {
+  headers: fixtureHeaders,
+  data: { email: `layout.${Date.now()}@e2e.vgc.test`, name: 'Layout Fixture', role: 'user' }
+});
+const fixtureMemberId = fixtureMember.ok() ? (await fixtureMember.json()).member?.id : null;
+ok('responsive sweep fixture: a temporary operator is added', Boolean(fixtureMemberId), `HTTP ${fixtureMember.status()}`);
+
+try {
 for (const viewport of VIEWPORTS) {
   const session = await newSession(viewport);
   try {
@@ -854,6 +940,60 @@ for (const viewport of VIEWPORTS) {
     });
     ok(`${viewport.name}: workflow filters remain reachable`, controlsReachable);
 
+    // The global search box never shows a clipped placeholder ("Search acros").
+    const searchHint = await session.page.$eval('#global-search', (input) => {
+      const style = getComputedStyle(input);
+      const measure = document.createElement('canvas').getContext('2d');
+      measure.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const available = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      return { placeholder: input.placeholder, text: measure.measureText(input.placeholder).width, available };
+    });
+    ok(
+      `${viewport.name}: the search placeholder fits its box`,
+      searchHint.placeholder.length > 0 && searchHint.text <= searchHint.available + 0.5,
+      `"${searchHint.placeholder}" ${Math.round(searchHint.text)}px in ${Math.round(searchHint.available)}px`
+    );
+
+    // The admin console stays operable: member controls sit on screen rather
+    // than behind a sideways scroll, and the tab strip shows where tabs hide.
+    await goto(session.page, 'admin');
+    await session.page.waitForSelector('[data-table="Workspace members"]', { timeout: 15000 });
+    const memberControls = await session.page.evaluate(() => {
+      const width = document.documentElement.clientWidth;
+      const controls = [...document.querySelectorAll('[data-table="Workspace members"] select, [data-table="Workspace members"] .admin-row-actions button')];
+      const offscreen = controls.filter((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.left < 0 || rect.right > width + 1;
+      });
+      return { total: controls.length, offscreen: offscreen.length };
+    });
+    ok(
+      `${viewport.name}: member role and actions stay on screen`,
+      memberControls.total > 0 && memberControls.offscreen === 0,
+      `${memberControls.offscreen}/${memberControls.total} off screen`
+    );
+    await session.page.focus('.tabs .tab.is-active');
+    await session.page.keyboard.press('End');
+    await session.page.waitForTimeout(150);
+    const strip = await session.page.evaluate(() => {
+      const bar = document.querySelector('.tabs');
+      const active = bar.querySelector('.tab.is-active');
+      const barRect = bar.getBoundingClientRect();
+      const tabRect = active.getBoundingClientRect();
+      return {
+        label: active.textContent.trim(),
+        visible: tabRect.left >= barRect.left - 1 && tabRect.right <= barRect.right + 1,
+        overflowing: bar.scrollWidth > bar.clientWidth + 1,
+        fadeStart: bar.classList.contains('has-more-start'),
+        fadeEnd: bar.classList.contains('has-more-end')
+      };
+    });
+    ok(
+      `${viewport.name}: the selected tab is scrolled into view and hidden tabs are signposted`,
+      strip.label === 'Learning memory' && strip.visible && strip.fadeEnd === false && strip.fadeStart === strip.overflowing,
+      JSON.stringify(strip)
+    );
+
     ok(
       `${viewport.name}: no page errors`,
       session.pageErrors.length === 0,
@@ -867,6 +1007,13 @@ for (const viewport of VIEWPORTS) {
   } finally {
     await session.context.close();
   }
+}
+} finally {
+  if (fixtureMemberId) {
+    const removed = await fixtureContext.request.delete(`${BASE}/api/admin/members/${encodeURIComponent(fixtureMemberId)}`, { headers: fixtureHeaders });
+    ok('responsive sweep fixture: the temporary operator is removed', removed.ok(), `HTTP ${removed.status()}`);
+  }
+  await fixtureContext.close();
 }
 
 await browser.close();

@@ -20,6 +20,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { atomicWriteFile } from '../lib/atomicWrite.js';
 import { logger } from '../lib/logger.js';
 import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 
@@ -64,9 +65,8 @@ function queueWrite(task) {
 
 async function persist() {
   return queueWrite(async () => {
-    await fs.mkdir(config.dataDir, { recursive: true });
     const payload = JSON.stringify([...tenants.values()], null, 2);
-    await fs.writeFile(registryPath(), payload, 'utf8');
+    await atomicWriteFile(registryPath(), payload, 'utf8');
   });
 }
 

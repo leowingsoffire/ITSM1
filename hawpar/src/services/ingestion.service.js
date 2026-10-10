@@ -146,6 +146,6 @@ export async function ingestDocument({ buffer, fileName, mimeType, batchId, corr
     checksum: checksum.slice(0, 12)
   });
 
-  enqueue(record.id, correlationId);
+  await enqueue(record.id, correlationId);
   return record;
 }

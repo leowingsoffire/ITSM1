@@ -1,12 +1,24 @@
 /**
- * Reproduces a real customer onboarding "VGC" through the actual wizard UI
- * (not the useIsolatedWorkspace shortcut), then exercises ingest → workflow →
- * export so any errors a genuine new customer would hit are caught.
+ * Reproduces a real customer signing up through the actual sign-in screen and
+ * onboarding wizard (not the useIsolatedWorkspace shortcut) — company, industry,
+ * administrator account, review — then exercises ingest → workflow → export so
+ * any errors a genuine new customer would hit are caught.
+ *
+ * Signup creates a real workspace and account, so against anything but a local
+ * server it runs only when E2E_ALLOW_SIGNUP=1.
  */
 import { chromium } from 'playwright-core';
-import { ARTIFACT_DIR, CHROMIUM_EXE, settleUi } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, settleUi } from './lib/e2e-session.mjs';
 
-const BASE = process.env.E2E_BASE ?? 'http://127.0.0.1:8080';
+const BASE = (process.env.E2E_BASE ?? 'http://127.0.0.1:8080').replace(/\/+$/, '');
+const LOCAL = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(BASE);
+if (!LOCAL && process.env.E2E_ALLOW_SIGNUP !== '1') {
+  console.log('SKIP  signup creates a real workspace and account; set E2E_ALLOW_SIGNUP=1 to run it against a remote server.');
+  process.exit(0);
+}
+const RUN = Date.now().toString(36);
+const COMPANY = `VGC ${RUN}`;
+const OWNER = { name: 'Test Onboarder', email: `onboarding.${RUN}@vgc.test`, password: `Onboard-${RUN}-Pass!` };
 
 const results = [];
 const ok = (name, pass, detail = '') => {
@@ -30,20 +42,19 @@ page.on('response', (response) => {
 });
 
 try {
-  // Fresh visitor — no localStorage tenant id set, so the onboarding wizard must show.
+  // A visitor without a session starts at the sign-in screen.
   await page.goto(BASE, { waitUntil: 'load' });
-  await page.evaluate(() => localStorage.clear());
-  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('#auth-create-workspace', { timeout: 15000 });
+  ok('a new visitor is offered self-service signup on the sign-in screen', true);
+  await page.click('#auth-create-workspace');
 
   const wizard = await page.waitForSelector('.onboard', { timeout: 10000 }).catch(() => null);
-  ok('onboarding wizard appears for a brand-new visitor', Boolean(wizard));
+  ok('onboarding wizard opens for a brand-new visitor', Boolean(wizard));
   if (!wizard) throw new Error('Wizard never appeared — aborting.');
 
   // Step 1: company profile
   await page.waitForSelector('#ob-company-name', { timeout: 10000 });
-  await page.fill('#ob-company-name', 'VGC');
-  await page.fill('#ob-contact-name', 'Test Onboarder');
-  await page.fill('#ob-contact-email', 'onboarding@vgc.test');
+  await page.fill('#ob-company-name', COMPANY);
   await page.waitForFunction(() => document.querySelector('#ob-country')?.options.length > 1, null, { timeout: 10000 });
   await page.selectOption('#ob-country', 'Singapore');
   await page.click('.onboard-actions .btn--primary');
@@ -56,29 +67,36 @@ try {
   await page.selectOption('#ob-business-type', typeOptions[0]);
   await page.click('.onboard-actions .btn--primary');
 
-  // Step 3: review & create
+  // Step 3: the administrator account
+  await page.waitForSelector('#ob-account-email', { timeout: 10000 });
+  await page.fill('#ob-account-name', OWNER.name);
+  await page.fill('#ob-account-email', OWNER.email);
+  await page.fill('#ob-account-password', OWNER.password);
+  await page.fill('#ob-account-confirm', OWNER.password);
+  await page.click('.onboard-actions .btn--primary');
+
+  // Step 4: review & create
   await page.waitForSelector('.onboard-summary', { timeout: 10000 });
   const summaryText = await page.$eval('.onboard-summary', (n) => n.textContent);
-  ok('review step shows the entered company name', summaryText.includes('VGC'), summaryText.slice(0, 80));
+  ok('review step shows the company and the administrator account', summaryText.includes(COMPANY) && summaryText.includes(OWNER.email), summaryText.slice(0, 120));
 
-  await page.click('button:has-text("Create my workspace")');
+  await page.click('#onboard-create');
   await page.waitForSelector('.onboard', { state: 'detached', timeout: 20000 }).catch((e) => {
     throw new Error(`Workspace creation never completed: ${e.message}`);
   });
   ok('workspace creation completes and the wizard closes', true);
 
-  // Now the passphrase gate (or straight into the app, depending on flow).
-  const authGate = await page.waitForSelector('#auth-passphrase', { timeout: 8000 }).catch(() => null);
-  if (authGate) {
-    await page.fill('#auth-passphrase', 'vgc');
-    await page.click('button.auth__submit', { force: true });
-    await page.waitForSelector('.auth', { state: 'detached', timeout: 15000 });
-  }
-  await page.waitForSelector('div.view', { timeout: 15000 });
-  ok('lands inside the app shell after onboarding', true);
+  await page.waitForSelector('#view-root div.view', { timeout: 15000 });
+  ok('lands inside the app shell after onboarding, already signed in', (await page.$('.auth')) === null);
 
-  const tenantMeta = await page.evaluate(() => localStorage.getItem('vgc.tenant-meta'));
-  ok('tenant metadata persisted to localStorage', Boolean(tenantMeta), tenantMeta ?? '');
+  const session = await page.evaluate(async () => (await fetch('/api/auth/session')).json());
+  ok(
+    'the new account administers the new workspace',
+    session.user?.email === OWNER.email && session.workspace?.name === COMPANY && session.workspace?.role === 'admin',
+    `${session.user?.email} · ${session.workspace?.name} · ${session.workspace?.role}`
+  );
+  const tabWorkspace = await page.evaluate(() => sessionStorage.getItem('vgc.tab-workspace'));
+  ok('the tab is pinned to the new workspace', tabWorkspace === session.workspace?.id, String(tabWorkspace));
 
   // Dashboard should reflect the new (empty) tenant, not demo data.
   await settleUi(page, 'dashboard');
@@ -104,7 +122,7 @@ try {
     while (Date.now() < deadline && !terminal) {
       await page.waitForTimeout(2000);
       const listing = await page.evaluate(async () => {
-        const tenantId = localStorage.getItem('vgc.tenant-id');
+        const tenantId = sessionStorage.getItem('vgc.tab-workspace');
         const res = await fetch('/api/documents?pageSize=1&sort=uploadedAt:desc', {
           headers: tenantId ? { 'x-tenant-id': tenantId } : {}
         });
@@ -117,7 +135,7 @@ try {
 
     if (terminal && lastStatus !== 'failed') {
       const docId = await page.evaluate(async () => {
-        const tenantId = localStorage.getItem('vgc.tenant-id');
+        const tenantId = sessionStorage.getItem('vgc.tab-workspace');
         const res = await fetch('/api/documents?pageSize=1&sort=uploadedAt:desc', {
           headers: tenantId ? { 'x-tenant-id': tenantId } : {}
         });
@@ -131,7 +149,7 @@ try {
 
       // Export to Excel — the core deliverable the user cares about.
       const exportResp = await page.evaluate(async (id) => {
-        const tenantId = localStorage.getItem('vgc.tenant-id');
+        const tenantId = sessionStorage.getItem('vgc.tab-workspace');
         const res = await fetch(`/api/documents/${encodeURIComponent(id)}/export.xlsx`, {
           headers: tenantId ? { 'x-tenant-id': tenantId } : {}
         });
@@ -150,7 +168,7 @@ try {
   await settleUi(page, 'settings');
   await page.waitForSelector('#set-company-name', { timeout: 10000 }).catch(() => {});
   const companyField = await page.$eval('#set-company-name', (n) => n.value).catch(() => null);
-  ok('settings reflect the onboarded company name', companyField ? companyField.includes('VGC') : false, String(companyField));
+  ok('settings reflect the onboarded company name', companyField === COMPANY, String(companyField));
 } catch (error) {
   ok('onboarding journey completed without throwing', false, error.message);
 } finally {

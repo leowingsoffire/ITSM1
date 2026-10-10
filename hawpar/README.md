@@ -201,7 +201,12 @@ npm install
 npm start
 ```
 
-Then open <http://localhost:8080>. The demo passphrase is `vgc`.
+Then open <http://localhost:8080>. On a fresh data directory the sign-in screen offers **first-run setup**,
+which creates the platform administrator (outside production only). Alternatively seed that account from
+the environment before starting — `ADMIN_EMAIL`, `ADMIN_PASSWORD` (at least 10 characters) and optionally
+`ADMIN_NAME`. **Create a workspace** on the sign-in screen walks a new customer through the onboarding
+wizard and makes them the administrator of their own isolated workspace (see
+[Identity, roles and integrations](#identity-roles-and-integrations)).
 
 The platform starts in **demo mode** (`ANALYZER_MODE=demo`): it generates real, multi-page PDFs and
 processes them through the identical pipeline, so the entire product can be demonstrated **without any
@@ -209,7 +214,7 @@ Azure spend**. Go to **Ingest Documents → Run selected samples** to populate t
 own PDFs onto the drop zone.
 
 ```powershell
-npm test     # 146 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
+npm test     # 241 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
 npm run e2e  # browser checks: full journeys, validation, a11y and desktop/tablet/mobile layouts
 ```
 
@@ -218,13 +223,22 @@ the document store and rewrite `settings.json` — running them against a real w
 Running a single file directly (`node --test tests/api.test.js`) fails fast with an explanation; set
 `DATA_DIR` to a throwaway directory if you need to.
 
-`npm run e2e` drives a real Chromium through Playwright against a server on `http://127.0.0.1:8080`, so
-start the app first. It exercises the onboarding wizard, the login gate, the account/workspace menu, all
-twelve routes, the ingest journey, the agent mesh, the accuracy console, the Azure console, workflow
-filtering/search/sorting, a real workflow transition with reload persistence, form validation, accessibility
-(labelling, heading structure, focus order), error and not-found states, console/network hygiene, and layout
-overflow at 1440 px, 834 px and 390 px. Screenshots are written to `artifacts/e2e/` (git-ignored), and the
-settings suites that mutate data provision their own workspace so the demo workspace is never altered.
+The browser suites drive a real Chromium through Playwright against a running server — `E2E_BASE`
+(default `http://127.0.0.1:8080`) — and sign in as `E2E_EMAIL`/`E2E_PASSWORD`, falling back to
+`ADMIN_EMAIL`/`ADMIN_PASSWORD`. Set `PLAYWRIGHT_CHROMIUM` to use a specific browser binary. Screenshots are
+written to `artifacts/` (git-ignored).
+
+| Script | What it proves | Safe against production? |
+| --- | --- | --- |
+| `npm run smoke` | Sign-in and rejection, KPIs, session survives reload, every route renders, document detail | Yes (read-only) |
+| `npm run e2e:identity` | Sign-in validation, account menu, members and roles, forced password change, API keys, webhooks with signed deliveries, activity log, sessions, workspace switching, self-signup | The remote subset only (adds and removes one operator, creates and revokes one key) |
+| `npm run e2e` | Signup wizard, account menu, 14 routes, ingest, agent mesh, accuracy and Azure consoles, workflow filtering and transitions, delete with confirmation, accessibility, error states, console/network/CSP hygiene, layouts at 1440, 834 and 390 px | No — ingests, approves and deletes documents |
+| `npm run e2e:onboarding` | Sign-in screen → signup wizard → signed-in administrator of the new workspace | Only with `E2E_ALLOW_SIGNUP=1` (creates a workspace) |
+| `npm run e2e:settings`, `e2e:settings-deep`, `e2e:templates` | Settings sections, operator restrictions, template studio | No — create workspaces or members |
+| `npm run legibility`, `npm run design:shots` | 4.5:1 text contrast on every route at three sizes; screenshots of every route | Yes |
+
+The suites that would otherwise alter data provision their own workspace, and signup journeys only run
+against a local server unless `E2E_ALLOW_SIGNUP=1`.
 
 ### Switching to live Azure analysis
 
@@ -297,8 +311,8 @@ The ink values are chosen against the *measured* contrast of rendered pixels,
 not the nominal token ratio. Subpixel antialiasing costs small text roughly
 0.7–1.1 of contrast, so a token that computes to 5.3:1 can render at 4.2:1.
 Every text run in the application measures **4.5:1 or better after that loss**,
-and `scripts/legibility.mjs` enforces it across 13 routes × 3 breakpoints
-(1,770 runs) — `npm run legibility`. The same check runs inside `npm run e2e`.
+and `scripts/legibility.mjs` enforces it across 14 routes × 3 breakpoints
+(about 1,500 text runs, depending on the data) — `npm run legibility`. The same check runs inside `npm run e2e`.
 
 Motion is functional only: state transitions and feedback, no ambient
 animation, parallax or custom cursor. All styling is applied through CSSOM
@@ -368,11 +382,15 @@ Verify with `https://<webAppName>.azurewebsites.net/api/health`. `engine` report
 `Cognitive Services User` role assignment has propagated; until then the platform degrades to the offline
 engine and records the reason on each document rather than failing the request.
 
-The whole browser suite can be pointed at the deployed site, which is the strongest end-to-end proof:
+The browser suites can be pointed at the deployed site, which is the strongest end-to-end proof. Against
+production use the read-only smoke suite (and, if an extra operator account is acceptable, the identity
+suite's remote subset); run the full `npm run e2e` against a staging slot, because it ingests, approves and
+deletes documents:
 
 ```powershell
 $env:E2E_BASE = "https://<webAppName>.azurewebsites.net"
-npm run e2e
+$env:E2E_EMAIL = "<admin email>"; $env:E2E_PASSWORD = "<password>"
+npm run smoke
 ```
 
 ### Edge preview (Cloudflare Workers)
@@ -390,6 +408,10 @@ npm run cf:deploy
 
 Rebuild the snapshot whenever the pipeline, agents, workflows or accuracy engine change, otherwise the edge
 preview will serve records that predate them.
+
+> The edge preview keeps accounts, sessions, API keys and webhooks **in memory**: they disappear whenever
+> the Worker is recycled. Use it to demonstrate the product, never to hold customer accounts — production
+> runs on App Service, where identity is persisted under `DATA_DIR`.
 
 ---
 
@@ -411,6 +433,69 @@ accurate as-deployed. Until then, scale **up** (P1v3 → P2v3), not out.
 
 ---
 
+## Identity, roles and integrations
+
+Every request is attributable to a real person or a named integration — there is no shared passphrase.
+
+- **Accounts and workspaces.** A person has one account and can belong to several workspaces (tenants),
+  each with its own documents, settings, members, keys, webhooks and activity log. Data never crosses
+  workspaces: a session for workspace A that asks for workspace B is refused unless the person is also a
+  member of B. The workspace is chosen per browser tab, so two tabs can work in two workspaces.
+- **Roles.** `Administrator` manages the workspace (members, API keys, webhooks, settings, destructive
+  actions); `Operator` uploads, reviews, corrects and approves. A **platform administrator** — seeded from
+  `ADMIN_EMAIL`/`ADMIN_PASSWORD` — can open and administer every workspace without being listed in it.
+  The last administrator of a workspace cannot be demoted or removed by a workspace administrator; only a
+  platform administrator can, after a confirmation that the workspace will be left without its own.
+- **Sessions.** HttpOnly, `SameSite=Lax` cookie (`Secure` in production) with a fixed lifetime
+  (`SESSION_TTL_HOURS`, default 12); cross-site writes are refused. Passwords are hashed with scrypt, must be at
+  least 10 characters, and five failed sign-ins lock the account for 15 minutes. Members added by an
+  administrator receive a one-time password and must choose their own at first sign-in; changing a
+  password signs out every other session. Each person can see and end their own sessions.
+- **Signup policy.** By default anyone can create a new workspace from the sign-in screen and becomes its
+  administrator. `SELF_SIGNUP=false` makes the deployment **invitation-only**: only platform administrators
+  create workspaces, and everyone else is added by an administrator.
+- **API keys** (*Administration → API keys*) connect back-office systems without a user session. Send the
+  key as `x-api-key`; it acts only in its own workspace and with the role chosen when it was created.
+  Keys look like `vgc_<id>_<secret>`, are shown exactly once and stored only as SHA-256 hashes, and can be
+  revoked at any time. A key can never manage keys or members.
+- **Webhooks** (*Administration → Webhooks*) push `document.processed`, `document.review_required`,
+  `document.failed`, `document.approved`, `document.rejected` and `document.deleted` to your systems. Each
+  delivery is signed (`x-vgc-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`) and
+  retried up to four times (immediately, then after about 5 s, 30 s and 2 min); every attempt is kept in
+  the delivery log. Destinations must resolve to public addresses — private, loopback and link-local
+  targets are refused, checked at connection time so DNS rebinding cannot bypass it. Retries are
+  in-process: a restart abandons in-flight retries.
+- **Activity log** (*Administration → Activity log*) — an append-only, per-workspace audit trail of
+  sign-ins, member and role changes, keys, webhooks, settings and document decisions, filterable and
+  exportable to CSV.
+
+Verifying a webhook signature (Node.js):
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function verifyVgcSignature(rawBody, header, secret, toleranceSeconds = 300) {
+  const parts = Object.fromEntries(header.split(',').map((part) => part.split('=')));
+  const timestamp = Number(parts.t);
+  if (!Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+  const given = Buffer.from(parts.v1 ?? '', 'hex');
+  return given.length === expected.length / 2 && timingSafeEqual(given, Buffer.from(expected, 'hex'));
+}
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | — | Seeds the platform administrator on first boot; the password is then managed in the app and never overwritten |
+| `SELF_SIGNUP` | `true` | `false` makes the deployment invitation-only |
+| `SESSION_TTL_HOURS` | `12` | How long a session lasts before signing in again |
+| `RATE_LIMIT_AUTH_PER_MINUTE` | `20` | Sign-in and signup attempts per client per minute (on top of the per-account lockout) |
+| `API_KEY` | — | Optional platform-wide service credential with platform-administrator rights; prefer per-workspace keys |
+| `WEBHOOK_ALLOW_PRIVATE_TARGETS` | `false` | Allows private webhook destinations — local development and tests only |
+| `WEBHOOK_RETRY_BASE_MS` | `5000` | Base delay of the webhook retry schedule |
+
+---
+
 ## Security & governance
 
 - HTTPS-only, HSTS, strict `Content-Security-Policy` (`script-src 'self'`, `style-src 'self'` — no
@@ -423,8 +508,11 @@ accurate as-deployed. Until then, scale **up** (P1v3 → P2v3), not out.
 - Defence-in-depth upload validation (extension, declared MIME type, magic bytes) and path-traversal-safe
   file names
 - Per-client rate limits, counted once per request over a rolling 60 s window: API 600/min
-  (`RATE_LIMIT_API_PER_MINUTE`) and upload 60/min (`RATE_LIMIT_UPLOAD_PER_MINUTE`)
-- Optional `API_KEY` gate with timing-safe comparison
+  (`RATE_LIMIT_API_PER_MINUTE`), upload 60/min (`RATE_LIMIT_UPLOAD_PER_MINUTE`) and sign-in/signup 20/min
+  (`RATE_LIMIT_AUTH_PER_MINUTE`)
+- Per-person accounts with scrypt-hashed passwords, account lockout, HttpOnly session cookies and CSRF
+  defence; per-workspace roles and hashed, revocable API keys with timing-safe comparison (see
+  [Identity, roles and integrations](#identity-roles-and-integrations))
 - Structured JSON logging with correlation IDs and automatic redaction of secret-like keys
 - PDPA: bank account numbers and identifiers masked before persistence; retention cap and hard delete
 - CSV exports are guarded against formula injection; all DOM is built via `textContent`, never `innerHTML`
@@ -446,9 +534,13 @@ src/
     analyzers/    Azure Document Intelligence client + offline demo engine
     agents/       Multi-agent orchestrator (11 agents, wave execution)
     *.service.js  Ingestion, pipeline, classification, extraction, validation,
-                  accuracy, workflow, azure, store, analytics, cost, export, samples
-  middleware/     Correlation IDs, security headers, CORS, auth, rate limiting
-  routes/         Document lifecycle, platform and intelligence APIs
+                  accuracy, workflow, azure, store, analytics, cost, export, samples,
+                  identity (accounts, memberships, sessions, API keys), activity log,
+                  webhooks
+  middleware/     Correlation IDs, security headers, CORS, authentication and
+                  per-workspace roles, rate limiting
+  routes/         Document lifecycle, platform, intelligence, auth, onboarding
+                  and administration APIs
   public/         Single-page application (HTML, CSS, ES modules)
     css/          app.css (tokens + shell), components.css (chrome), vgc.css (features)
     assets/azure/ Official Microsoft Azure service icons (see ATTRIBUTION.md)
@@ -478,6 +570,22 @@ imply Microsoft endorsement. Full detail in
 | --- | --- | --- |
 | `GET` | `/api/health` | Liveness probe used by App Service |
 | `GET` | `/api/config` | Capability discovery for the SPA |
+| `GET` | `/api/auth/session` | Who is signed in, the active workspace, the workspaces they can open and the sign-in options |
+| `POST` | `/api/auth/login` · `/api/auth/logout` | Sign in (sets the session cookie) · sign out |
+| `POST` | `/api/auth/setup` | First-run creation of the platform administrator (disabled in production) |
+| `POST` | `/api/auth/password` | Change your password; signs out your other sessions |
+| `POST` | `/api/auth/workspace` | Switch the session to another workspace you belong to |
+| `GET` · `DELETE` | `/api/auth/sessions` · `/api/auth/sessions/:id` | List · end your own sessions (`POST /api/auth/sessions/revoke-others` ends all but this one) |
+| `POST` | `/api/onboarding` | Create a workspace — anonymous signup also creates its administrator account |
+| `GET` · `POST` | `/api/admin/members` | List · add workspace members (returns a one-time password for new accounts) |
+| `PATCH` · `DELETE` | `/api/admin/members/:id` | Change a member's role · remove them from the workspace |
+| `POST` | `/api/admin/members/:id/reset-password` | Issue a one-time password and end the member's sessions |
+| `GET` · `POST` · `DELETE` | `/api/admin/api-keys` · `/api/admin/api-keys/:id` | List · create (secret shown once) · revoke workspace API keys |
+| `GET` · `POST` · `PATCH` · `DELETE` | `/api/admin/webhooks` · `/api/admin/webhooks/:id` | Manage webhook subscriptions |
+| `POST` | `/api/admin/webhooks/:id/rotate-secret` · `/test` | Rotate the signing secret · send a signed test event |
+| `GET` | `/api/admin/webhooks/:id/deliveries` | Delivery log with every attempt |
+| `GET` | `/api/admin/activity` | Workspace activity log (`limit`, `before`, `action`, `actor`, `q`) |
+| `GET` · `DELETE` | `/api/admin/learning/memory` | Correction-learning statistics · clear the learned corrections |
 | `POST` | `/api/documents` | Multi-file upload |
 | `GET` | `/api/documents` | Filtered, paginated listing |
 | `GET` | `/api/documents/:id` | Full record without page payloads |

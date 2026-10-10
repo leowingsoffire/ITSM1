@@ -10,7 +10,9 @@ import { badRequest, notFound } from '../lib/errors.js';
 import { benchmarkCorpus, buildCalibration } from '../services/accuracy.service.js';
 import { integrationProfile, modelCatalogue, probeService } from '../services/azure.service.js';
 import { listAgentRuns } from '../services/pipeline.service.js';
-import { ensureTenantStoreLoaded, getDocument, listAllDocuments } from '../services/store.service.js';
+import { auditRequest } from '../services/activity.service.js';
+import { DocumentStatus, ensureTenantStoreLoaded, getDocument, listAllDocuments } from '../services/store.service.js';
+import { dispatchDocumentEvent } from '../services/webhooks.service.js';
 import {
   applyWorkflowAction,
   getWorkflow,
@@ -159,14 +161,27 @@ router.post(
   asyncHandler(async (request, response) => {
     const body = request.body ?? {};
     if (!body.action) throw badRequest('"action" is required.');
-    response.json(
-      await applyWorkflowAction(request.params.documentId, {
-        action: body.action,
-        actor: body.actor,
-        note: body.note,
-        assignee: body.assignee
-      })
-    );
+    const before = getDocument(request.params.documentId).status;
+    // The actor is the authenticated principal, never a client-supplied field.
+    const result = await applyWorkflowAction(request.params.documentId, {
+      action: body.action,
+      actor: request.actor,
+      note: body.note,
+      assignee: body.assignee
+    });
+    const action = String(body.action).toLowerCase();
+    auditRequest(request, `workflow.${action}`, {
+      target: `${result.workflow.definitionName ?? 'Workflow'} (${request.params.documentId})`,
+      detail: [body.note, body.assignee ? `Assignee: ${body.assignee}` : null].filter(Boolean).join(' · ') || null
+    });
+    if (result.documentStatus !== before && [DocumentStatus.APPROVED, DocumentStatus.REJECTED].includes(result.documentStatus)) {
+      dispatchDocumentEvent(
+        request.tenantId,
+        result.documentStatus === DocumentStatus.APPROVED ? 'document.approved' : 'document.rejected',
+        request.params.documentId
+      );
+    }
+    response.json(result);
   })
 );
 

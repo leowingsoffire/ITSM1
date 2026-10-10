@@ -1,10 +1,10 @@
 import { chromium } from 'playwright-core';
 import path from 'node:path';
 import fs from 'node:fs';
-import { ARTIFACT_DIR, CHROMIUM_EXE, dismissOnboarding, useIsolatedWorkspace } from './lib/e2e-session.mjs';
+import { ARTIFACT_DIR, CHROMIUM_EXE, useIsolatedWorkspace } from './lib/e2e-session.mjs';
 
 const EXE = CHROMIUM_EXE;
-const BASE = process.env.E2E_BASE ?? 'http://localhost:8080';
+const BASE = (process.env.E2E_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 const results = [];
 const ok = (name, pass, detail = '') => {
   results.push({ name, pass, detail });
@@ -32,12 +32,10 @@ try {
   // inside its own provisioned workspace and never touches the shared one.
   const tenant = await useIsolatedWorkspace(page, BASE, 'Settings Deep E2E');
 
+  // The isolated workspace signs this context in over the API, so the app
+  // opens straight into it.
   await page.goto(BASE, { waitUntil: 'load' });
-  await dismissOnboarding(page);
-  await page.waitForSelector('#auth-passphrase');
-  await page.fill('#auth-passphrase', 'vgc');
-  await page.click('button.auth__submit', { force: true });
-  await page.waitForSelector('.auth', { state: 'detached' });
+  await page.waitForSelector('#view-root div.view', { timeout: 15000 });
   await page.click('a.nav-item[data-view="settings"]');
   await page.waitForFunction(() => document.querySelector('.settings-grid'));
 
@@ -89,26 +87,29 @@ try {
   const persisted = await page.$eval('textarea', (n) => n.value);
   ok('template edits persist after reload', persisted.includes(marker), persisted.slice(0, 60));
 
-  // --- 4. Server-side role enforcement via raw API (bypassing UI) ---
-  const forbiddenStatus = await page.evaluate(async (tenantId) => {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-user-role': 'user', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ company: { name: 'Hacked Inc' } })
-    });
-    return res.status;
-  }, tenant.id);
+  // --- 4. Server-side role enforcement for a real operator (bypassing the UI) ---
+  const operatorEmail = `deep.operator.${Date.now().toString(36)}@e2e.vgc.test`;
+  const added = await page.context().request.post(`${BASE}/api/admin/members`, {
+    headers: { 'x-tenant-id': tenant.id },
+    data: { email: operatorEmail, role: 'user' }
+  });
+  const { temporaryPassword } = await added.json();
+  const operatorContext = await browser.newContext();
+  const operatorPassword = `Deep-Operator-${Date.now()}`;
+  await operatorContext.request.post(`${BASE}/api/auth/login`, { data: { email: operatorEmail, password: temporaryPassword } });
+  await operatorContext.request.post(`${BASE}/api/auth/password`, {
+    data: { currentPassword: temporaryPassword, newPassword: operatorPassword }
+  });
+  const forbiddenStatus = (
+    await operatorContext.request.patch(`${BASE}/api/settings`, { data: { company: { name: 'Hacked Inc' } } })
+  ).status();
   ok('server rejects non-admin PATCH to admin-only field (403)', forbiddenStatus === 403, `status=${forbiddenStatus}`);
 
-  const allowedStatus = await page.evaluate(async (tenantId) => {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-user-role': 'user', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ regional: { locale: 'en-SG' } })
-    });
-    return res.status;
-  }, tenant.id);
+  const allowedStatus = (
+    await operatorContext.request.patch(`${BASE}/api/settings`, { data: { regional: { locale: 'en-SG' } } })
+  ).status();
   ok('server allows non-admin PATCH to user-editable field (200)', allowedStatus === 200, `status=${allowedStatus}`);
+  await operatorContext.close();
 
   // --- 5. Accessibility basics: every settings input has an associated label, across all tabs ---
   let unlabeled = 0;

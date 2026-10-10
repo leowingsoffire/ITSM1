@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config/index.js';
 import { AppError, ErrorCode, notFound } from '../lib/errors.js';
+import { atomicWriteFile } from '../lib/atomicWrite.js';
 import { logger } from '../lib/logger.js';
 import { currentTenantId, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 import { tenantDataDir, tenantUploadDir } from './tenant.service.js';
@@ -87,8 +88,7 @@ function queueWrite(task) {
 
 async function persist(record, tenantId = currentTenantId()) {
   return queueWrite(async () => {
-    await fs.mkdir(documentsPath(tenantId), { recursive: true });
-    await fs.writeFile(filePathFor(record.id, tenantId), JSON.stringify(record), 'utf8');
+    await atomicWriteFile(filePathFor(record.id, tenantId), JSON.stringify(record), 'utf8');
   });
 }
 
@@ -157,6 +157,10 @@ async function ensureTenantLoaded(tenantId) {
  */
 export async function ensureTenantStoreLoaded() {
   await ensureTenantLoaded(currentTenantId());
+  // Late-bound to avoid a store↔pipeline import cycle; recovery is idempotent
+  // per boot because `recoverJobs()` resets the pending list first.
+  const { recoverPendingJobs } = await import('./pipeline.service.js');
+  await recoverPendingJobs();
 }
 
 export async function initialiseStore() {
@@ -239,7 +243,7 @@ export function createBatch({ label, submittedBy }) {
   const batch = {
     id: `batch_${randomUUID()}`,
     label: label ?? `Batch ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
-    submittedBy: submittedBy ?? 'demo.user@vgc.com',
+    submittedBy: submittedBy ?? 'system',
     createdAt: new Date().toISOString(),
     documentIds: []
   };
@@ -280,7 +284,7 @@ export async function createDocument(input) {
     audit: [
       {
         at: now,
-        actor: input.submittedBy ?? 'demo.user@vgc.com',
+        actor: input.submittedBy ?? 'system',
         action: 'uploaded',
         detail: `${input.fileName} (${(input.fileSize / 1024).toFixed(1)} KB) queued for analysis.`
       }

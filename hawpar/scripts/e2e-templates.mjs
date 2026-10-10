@@ -8,12 +8,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { CHROMIUM_EXE, artifact, settleUi, signIn, useIsolatedWorkspace } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, artifact, settleUi, useIsolatedWorkspace } from './lib/e2e-session.mjs';
 import { generateSamplePdf } from '../src/services/sample.service.js';
 import { buildWorkbook } from '../src/lib/xlsx.js';
 
 const EXE = CHROMIUM_EXE;
-const BASE = process.env.E2E_BASE ?? 'http://localhost:8080';
+const BASE = (process.env.E2E_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 const results = [];
 const ok = (name, pass, detail = '') => {
   results.push({ name, pass, detail });
@@ -42,8 +42,8 @@ try {
   });
 
   const tenant = await useIsolatedWorkspace(page, BASE, 'Template Studio E2E');
+  // Already signed in over the API; the app opens straight into the workspace.
   await page.goto(BASE, { waitUntil: 'load' });
-  await signIn(page, { role: 'admin' });
   await settleUi(page, 'dashboard');
 
   // --- Navigate to Template Studio (empty state) ---

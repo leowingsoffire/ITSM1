@@ -1,18 +1,23 @@
 /**
  * Typed API client. Centralises error handling so every view reacts consistently.
+ *
+ * Identity comes from the HttpOnly session cookie. A 401 outside the auth
+ * routes means the session ended (expired, revoked or signed out elsewhere)
+ * and is announced with a `vgc:session-expired` window event; a 403 asking for
+ * a password change raises `vgc:password-change-required`.
  */
-import { getRole } from './role.js';
 import { getTenantId } from './tenant.js';
 
 const JSON_HEADERS = Object.freeze({ 'Content-Type': 'application/json' });
 
 export class ApiError extends Error {
-  constructor(message, { status, code, correlationId } = {}) {
+  constructor(message, { status, code, correlationId, reason } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.correlationId = correlationId;
+    this.reason = reason;
   }
 }
 
@@ -36,13 +41,10 @@ function retryDelay(response, attempt) {
 
 async function request(path, options = {}) {
   const method = (options.method ?? 'GET').toUpperCase();
-  // Every request carries the demo role so the server can enforce field-level
-  // edit permissions (see role.js) — never trust the UI gate alone.
   const headers = new Headers(options.headers ?? {});
-  headers.set('x-user-role', getRole());
   const tenantId = getTenantId();
   if (tenantId) headers.set('x-tenant-id', tenantId);
-  const requestOptions = { ...options, headers };
+  const requestOptions = { ...options, headers, credentials: 'same-origin' };
   // Only idempotent requests may be replayed automatically.
   const retryable = method === 'GET' || method === 'HEAD';
   let response;
@@ -68,11 +70,18 @@ async function request(path, options = {}) {
   const payload = await response.json();
   if (!response.ok) {
     const detail = payload?.error ?? {};
-    throw new ApiError(detail.message ?? `Request failed with status ${response.status}.`, {
+    const error = new ApiError(detail.message ?? `Request failed with status ${response.status}.`, {
       status: response.status,
       code: detail.code,
-      correlationId: detail.correlationId
+      correlationId: detail.correlationId,
+      reason: detail.reason
     });
+    if (response.status === 401 && !path.startsWith('/api/auth/')) {
+      window.dispatchEvent(new CustomEvent('vgc:session-expired'));
+    } else if (response.status === 403 && detail.reason === 'PASSWORD_CHANGE_REQUIRED') {
+      window.dispatchEvent(new CustomEvent('vgc:password-change-required'));
+    }
+    throw error;
   }
   return payload;
 }
@@ -98,18 +107,18 @@ export const api = {
   getText: (id) => request(`/api/documents/${encodeURIComponent(id)}/text`),
   deleteDocument: (id) => request(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  updateField: (id, fieldKey, value, actor) =>
+  updateField: (id, fieldKey, value) =>
     request(`/api/documents/${encodeURIComponent(id)}/fields/${encodeURIComponent(fieldKey)}`, {
       method: 'PATCH',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ value, actor })
+      body: JSON.stringify({ value })
     }),
 
-  decide: (id, decision, note, actor) =>
+  decide: (id, decision, note) =>
     request(`/api/documents/${encodeURIComponent(id)}/decision`, {
       method: 'POST',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ decision, note, actor })
+      body: JSON.stringify({ decision, note })
     }),
 
   upload: (files, label) => {
@@ -208,5 +217,50 @@ export const api = {
   onboardingCountries: () => request('/api/onboarding/countries'),
   createWorkspace: (body) =>
     request('/api/onboarding', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
-  getWorkspace: (tenantId) => request(`/api/onboarding/${encodeURIComponent(tenantId)}`)
+
+  // ── Identity and sessions ──────────────────────────────────────────────
+  session: () => request('/api/auth/session'),
+  login: (body) =>
+    request('/api/auth/login', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  setup: (body) =>
+    request('/api/auth/setup', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+  changePassword: (body) =>
+    request('/api/auth/password', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  switchWorkspace: (tenantId) =>
+    request('/api/auth/workspace', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ tenantId }) }),
+  listSessions: () => request('/api/auth/sessions'),
+  revokeSession: (id) => request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  revokeOtherSessions: () => request('/api/auth/sessions/revoke-others', { method: 'POST' }),
+
+  // ── Workspace administration ───────────────────────────────────────────
+  listMembers: () => request('/api/admin/members'),
+  addMember: (body) =>
+    request('/api/admin/members', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  updateMember: (userId, patch) =>
+    request(`/api/admin/members/${encodeURIComponent(userId)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch) }),
+  removeMember: (userId) => request(`/api/admin/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  resetMemberPassword: (userId) =>
+    request(`/api/admin/members/${encodeURIComponent(userId)}/reset-password`, { method: 'POST' }),
+
+  listApiKeys: () => request('/api/admin/api-keys'),
+  createApiKey: (body) =>
+    request('/api/admin/api-keys', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  revokeApiKey: (id) => request(`/api/admin/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  listWebhooks: () => request('/api/admin/webhooks'),
+  createWebhook: (body) =>
+    request('/api/admin/webhooks', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  updateWebhook: (id, patch) =>
+    request(`/api/admin/webhooks/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch) }),
+  deleteWebhook: (id) => request(`/api/admin/webhooks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  rotateWebhookSecret: (id) =>
+    request(`/api/admin/webhooks/${encodeURIComponent(id)}/rotate-secret`, { method: 'POST' }),
+  testWebhook: (id) => request(`/api/admin/webhooks/${encodeURIComponent(id)}/test`, { method: 'POST' }),
+  webhookDeliveries: (id, limit) =>
+    request(`/api/admin/webhooks/${encodeURIComponent(id)}/deliveries${query({ limit })}`),
+
+  activity: (params) => request(`/api/admin/activity${query(params)}`),
+  learningMemory: (recent) => request(`/api/learning/memory${query({ recent })}`),
+  clearLearningMemory: () => request('/api/learning/memory', { method: 'DELETE' })
 };

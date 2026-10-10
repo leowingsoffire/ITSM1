@@ -16,6 +16,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config/index.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { atomicWriteFile } from '../lib/atomicWrite.js';
 import { logger } from '../lib/logger.js';
 import { formatMoney, parseAmount, parseDate, toIsoDate } from '../lib/format.js';
 import { currentTenantId, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
@@ -90,15 +91,13 @@ function queueWrite(task) {
 
 async function persistTemplate(record, tenantId) {
   return queueWrite(async () => {
-    await fs.mkdir(templatesDirPath(tenantId), { recursive: true });
-    await fs.writeFile(templateFilePath(record.id, tenantId), JSON.stringify(record), 'utf8');
+    await atomicWriteFile(templateFilePath(record.id, tenantId), JSON.stringify(record), 'utf8');
   });
 }
 
 async function persistRun(record, tenantId) {
   return queueWrite(async () => {
-    await fs.mkdir(runsDirPath(tenantId), { recursive: true });
-    await fs.writeFile(runFilePath(record.id, tenantId), JSON.stringify(record), 'utf8');
+    await atomicWriteFile(runFilePath(record.id, tenantId), JSON.stringify(record), 'utf8');
   });
 }
 

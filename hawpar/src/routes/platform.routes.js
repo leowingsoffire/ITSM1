@@ -19,7 +19,8 @@ import {
 import { ingestDocument } from '../services/ingestion.service.js';
 import { getPipelineStatus, pipelineEvents } from '../services/pipeline.service.js';
 import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
-import { tenantExists } from '../services/tenant.service.js';
+import { requireAdmin } from '../middleware/auth.js';
+import { auditRequest } from '../services/activity.service.js';
 import { SAMPLE_LIBRARY, generateSamplePdf, getSample } from '../services/sample.service.js';
 import { clearAll, createBatch, ensureTenantStoreLoaded, searchFullText, toSummary } from '../services/store.service.js';
 import { listClaims, getClaim, claimsOverview } from '../services/claims.service.js';
@@ -196,7 +197,7 @@ router.post(
 
     if (selected.length === 0) throw badRequest('No valid sample identifiers were supplied.');
 
-    const batch = createBatch({ label: 'VGC sample document pack', submittedBy: 'demo.user@vgc.com' });
+    const batch = createBatch({ label: 'VGC sample document pack', submittedBy: request.actor });
     const accepted = [];
 
     for (const sample of selected) {
@@ -208,10 +209,11 @@ router.post(
         mimeType,
         batchId: batch.id,
         correlationId: request.correlationId,
-        submittedBy: 'demo.user@vgc.com'
+        submittedBy: request.actor
       });
       accepted.push(toSummary(record));
     }
+    auditRequest(request, 'document.samples_loaded', { target: batch.id, detail: `Loaded ${accepted.length} sample document(s).` });
 
     response.status(202).json({
       batchId: batch.id,
@@ -313,30 +315,25 @@ router.get(
 
 router.delete(
   '/admin/reset',
+  requireAdmin,
   asyncHandler(async (request, response) => {
-    response.json(await clearAll());
+    const result = await clearAll();
+    await auditRequest(request, 'workspace.reset', { detail: 'Cleared every document, batch and claim in the workspace.' });
+    response.json(result);
   })
 );
 
 /**
  * GET /api/events — server-sent events for live pipeline progress.
  *
- * `EventSource` cannot set custom request headers, so the tenant id that
- * every other endpoint reads from `x-tenant-id` is passed as `?tenantId=`
- * instead (see `public/js/store.js`). Every event is filtered to the
- * requesting tenant so one workspace's live pipeline activity can never leak
- * into another's — without this, every browser tab (regardless of which
- * customer workspace it belongs to) would see every other tenant's document
- * processing events, including document ids it has no access to.
+ * `EventSource` cannot set custom request headers, so a tab pins its
+ * workspace with `?tenantId=`; `tenantContext` has already verified the
+ * caller's membership of that workspace and resolved `request.tenantId`.
+ * Every event is filtered to that workspace, so one customer's live
+ * pipeline activity (including document ids) can never reach another's tab.
  */
 router.get('/events', (request, response) => {
-  const requested = String(request.query.tenantId ?? '').trim();
-  const tenantId = requested || DEFAULT_TENANT_ID;
-  if (!tenantExists(tenantId)) {
-    response.status(404).json({ error: `Workspace "${tenantId}" was not found.` });
-    return;
-  }
-
+  const tenantId = request.tenantId ?? DEFAULT_TENANT_ID;
   response.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',

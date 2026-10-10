@@ -5,11 +5,14 @@ import express from 'express';
 import multer from 'multer';
 import { config } from '../config/index.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
-import { rateLimit } from '../middleware/index.js';
+import { bindTenantContext, rateLimit } from '../middleware/index.js';
+import { auditRequest } from '../services/activity.service.js';
 import { applyManualCorrection } from '../services/extraction.service.js';
 import { exportDocumentWorkbook } from '../services/export.service.js';
 import { ingestDocument } from '../services/ingestion.service.js';
+import { recordCorrection } from '../services/learning.service.js';
 import { validateDocument } from '../services/validation.service.js';
+import { dispatchDocumentEvent, dispatchEvent } from '../services/webhooks.service.js';
 import {
   DocumentStatus,
   appendAudit,
@@ -46,15 +49,15 @@ const DECISIONS = Object.freeze({
   reject: DocumentStatus.REJECTED
 });
 
-const MAX_ACTOR_LENGTH = 80;
 const MAX_VALUE_LENGTH = 500;
 
+/**
+ * Who is acting: always the authenticated principal resolved by the auth
+ * middleware, never a client-supplied field, so the audit trail cannot be
+ * forged by editing a request body.
+ */
 function readActor(request) {
-  const actor = String(request.body?.actor ?? 'demo.user@vgc.com').trim();
-  if (actor.length === 0 || actor.length > MAX_ACTOR_LENGTH) {
-    throw badRequest(`"actor" must be between 1 and ${MAX_ACTOR_LENGTH} characters.`);
-  }
-  return actor;
+  return request.actor ?? 'system';
 }
 
 /** POST /api/documents — multi-file upload. */
@@ -62,6 +65,7 @@ router.post(
   '/',
   rateLimit('upload'),
   upload.array('files', config.limits.maxFilesPerRequest),
+  bindTenantContext,
   asyncHandler(async (request, response) => {
     const files = request.files ?? [];
     if (files.length === 0) {
@@ -70,7 +74,7 @@ router.post(
 
     const batch = createBatch({
       label: typeof request.body?.label === 'string' ? request.body.label.slice(0, 120) : undefined,
-      submittedBy: typeof request.body?.actor === 'string' ? request.body.actor.slice(0, MAX_ACTOR_LENGTH) : undefined
+      submittedBy: readActor(request)
     });
 
     const accepted = [];
@@ -101,6 +105,11 @@ router.post(
         error: { code: 'VALIDATION_FAILED', message: 'Every file was rejected.', rejected }
       });
     }
+
+    auditRequest(request, 'document.uploaded', {
+      target: batch.id,
+      detail: `Uploaded ${accepted.length} file(s)${rejected.length ? `; ${rejected.length} rejected` : ''}: ${accepted.map((item) => item.fileName).join(', ')}`
+    });
 
     return response.status(202).json({
       batchId: batch.id,
@@ -185,7 +194,7 @@ router.get(
   })
 );
 
-/** PATCH /api/documents/:id/fields/:fieldKey — human correction. */
+/** PATCH /api/documents/:id/fields/:fieldKey — human correction (also teaches the self-learning memory). */
 router.patch(
   '/:id/fields/:fieldKey',
   asyncHandler(async (request, response) => {
@@ -219,6 +228,20 @@ router.patch(
       return { ...withAudit, fields, validation };
     });
 
+    // Fire-and-forget: the correction teaches future extractions even if the
+    // memory write fails, the correction itself is already persisted above.
+    recordCorrection({
+      typeId: updated.classification?.typeId ?? 'unclassified',
+      fieldKey: field.key,
+      label: field.label,
+      fromValue: field.rawValue,
+      toValue: corrected.rawValue
+    }).catch(() => {});
+    auditRequest(request, 'document.field_corrected', {
+      target: `${record.fileName} (${record.id})`,
+      detail: `${field.label}: "${field.rawValue ?? '(empty)'}" → "${corrected.rawValue ?? '(empty)'}"`
+    });
+
     response.json({ field: corrected, validation: updated.validation, summary: toSummary(updated) });
   })
 );
@@ -246,6 +269,12 @@ router.post(
       });
       return { ...withAudit, status: nextStatus };
     });
+
+    auditRequest(request, decision === 'approve' ? 'document.approved' : 'document.rejected', {
+      target: `${record.fileName} (${record.id})`,
+      detail: note || null
+    });
+    dispatchDocumentEvent(request.tenantId, decision === 'approve' ? 'document.approved' : 'document.rejected', record.id);
 
     response.json({ summary: toSummary(updated), status: updated.status, audit: updated.audit.slice(-5) });
   })
@@ -277,7 +306,13 @@ router.get(
 router.delete(
   '/:id',
   asyncHandler(async (request, response) => {
-    response.json(await deleteDocument(request.params.id));
+    const record = getDocument(request.params.id);
+    // Build the payload before deletion: receivers learn what was removed.
+    const deletedEvent = { documentId: record.id, fileName: record.fileName, status: record.status };
+    const result = await deleteDocument(request.params.id);
+    auditRequest(request, 'document.deleted', { target: `${record.fileName} (${record.id})` });
+    dispatchEvent(request.tenantId, 'document.deleted', deletedEvent).catch(() => {});
+    response.json(result);
   })
 );
 

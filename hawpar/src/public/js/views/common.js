@@ -114,25 +114,34 @@ export function skeletonBlock(variant = 'chart') {
  * container cannot be reached by keyboard in Chromium, which would strand the
  * off-screen columns, so it is exposed as a labelled, focusable region.
  *
+ * With `stack`, a table narrower than its threshold (840px for `true`, or a
+ * number of pixels) shows each row as a block of label/value pairs instead
+ * (see `.table-wrap.is-stacked`), so inline controls and trailing columns such
+ * as status stay on screen. Explicit ARIA table roles keep the table
+ * semantics that `display: block` would otherwise strip in some browsers.
+ *
  * @param {Array<{label: string, numeric?: boolean}>} columns
  * @param {Array<Array<Node|string>>} rows
- * @param {{onRowClick?: Function, emptyMessage?: string, label?: string}} [options]
+ * @param {{onRowClick?: Function, emptyMessage?: string, label?: string, stack?: boolean|number}} [options]
  */
-export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing to display yet.', label = 'Data table' } = {}) {
+export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing to display yet.', label = 'Data table', stack = false } = {}) {
   if (rows.length === 0) return el('div.table-empty', { 'data-table': label, text: emptyMessage });
 
-  const head = el('thead', {}, [
-    el('tr', {}, columns.map((column) => el(`th${column.numeric ? '.num' : ''}`, { text: column.label })))
+  const stackBelow = stack === true ? 840 : Number(stack) || 0;
+  const roles = (role) => (stack ? { role } : {});
+  const head = el('thead', roles('rowgroup'), [
+    el('tr', roles('row'), columns.map((column) => el(`th${column.numeric ? '.num' : ''}`, { ...roles('columnheader'), text: column.label })))
   ]);
 
   const body = el(
     'tbody',
-    {},
+    roles('rowgroup'),
     rows.map((cells, rowIndex) => {
-      const tr = el(`tr${onRowClick ? '.is-clickable' : ''}`, {});
+      const tr = el(`tr${onRowClick ? '.is-clickable' : ''}`, roles('row'));
       cells.forEach((cell, index) => {
         const column = columns[index] ?? {};
-        tr.append(el(`td${column.numeric ? '.num' : ''}${column.mono ? '.mono' : ''}`, {}, cell));
+        const attributes = stack ? { role: 'cell', 'data-label': column.label ?? '' } : {};
+        tr.append(el(`td${column.numeric ? '.num' : ''}${column.mono ? '.mono' : ''}`, attributes, cell));
       });
       if (onRowClick) {
         tr.addEventListener('click', () => onRowClick(rowIndex));
@@ -145,14 +154,18 @@ export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing t
     })
   );
 
-  const wrap = el('div.table-wrap', { 'data-table': label }, [el('table.data', {}, [head, body])]);
+  const wrap = el('div.table-wrap', { 'data-table': label }, [el('table.data', roles('table'), [head, body])]);
 
   // Only a container that actually overflows earns a tab stop; otherwise every
   // table would add a focus stop that does nothing. The scroll region is also
   // only named when it exists — a page carrying six non-scrolling tables would
   // otherwise expose six identically-labelled landmarks to a screen reader.
+  // Stacking never changes the wrapper's width, so toggling it here cannot
+  // trigger another resize notification.
   const syncScrollAffordance = () => {
-    const scrollable = wrap.scrollWidth > wrap.clientWidth + 1;
+    const stacked = stackBelow > 0 && wrap.clientWidth < stackBelow;
+    wrap.classList.toggle('is-stacked', stacked);
+    const scrollable = !stacked && wrap.scrollWidth > wrap.clientWidth + 1;
     wrap.classList.toggle('is-scrollable', scrollable);
     if (scrollable) {
       wrap.setAttribute('tabindex', '0');
@@ -202,18 +215,19 @@ export function numberInput({ label, value, min, max, step = 1, onChange, id }) 
  * until it is opened.
  *
  * @param {{id:string,label:string,render:() => Node}[]} panels
- * @param {{ label?: string, idPrefix?: string }} [options]
+ * @param {{ label?: string, idPrefix?: string, initial?: string, onSelect?: (id: string) => void }} [options]
  * @returns {{ node: Node, tabBar: Node, panelHost: Node, select: (id:string) => void }}
  */
-export function tabGroup(panels, { label = 'Sections', idPrefix = 'tab' } = {}) {
+export function tabGroup(panels, { label = 'Sections', idPrefix = 'tab', initial, onSelect } = {}) {
   if (panels.length === 0) return { node: el('div'), tabBar: el('div'), panelHost: el('div'), select: () => {} };
 
+  const initialIndex = Math.max(0, panels.findIndex((panel) => panel.id === initial));
   const panelHost = el('div.tab-panel', {
     id: `${idPrefix}-panel`,
     role: 'tabpanel',
     tabIndex: 0,
-    'aria-labelledby': `${idPrefix}-${panels[0].id}`
-  }, [panels[0].render()]);
+    'aria-labelledby': `${idPrefix}-${panels[initialIndex].id}`
+  }, [panels[initialIndex].render()]);
 
   const buttons = [];
   const activate = (index, { focus = false } = {}) => {
@@ -227,17 +241,19 @@ export function tabGroup(panels, { label = 'Sections', idPrefix = 'tab' } = {}) 
     panelHost.setAttribute('aria-labelledby', `${idPrefix}-${panel.id}`);
     panelHost.replaceChildren(panel.render());
     if (focus) buttons[index].focus();
+    revealTab(buttons[index]);
+    onSelect?.(panel.id);
   };
 
   panels.forEach((panel, index) => {
     buttons.push(
-      el(`button.tab${index === 0 ? '.is-active' : ''}`, {
+      el(`button.tab${index === initialIndex ? '.is-active' : ''}`, {
         type: 'button',
         id: `${idPrefix}-${panel.id}`,
         role: 'tab',
-        'aria-selected': String(index === 0),
+        'aria-selected': String(index === initialIndex),
         'aria-controls': `${idPrefix}-panel`,
-        tabIndex: index === 0 ? 0 : -1,
+        tabIndex: index === initialIndex ? 0 : -1,
         text: panel.label,
         on: {
           click: () => activate(index),
@@ -260,6 +276,33 @@ export function tabGroup(panels, { label = 'Sections', idPrefix = 'tab' } = {}) 
   });
 
   const tabBar = el('div.tabs', { role: 'tablist', 'aria-label': label }, buttons);
+
+  // On a narrow screen the strip scrolls sideways. Fade whichever edge hides
+  // more tabs so the overflow is discoverable, and keep the selected tab in
+  // view rather than leaving it scrolled off behind the fade.
+  const EDGE_MARGIN = 28;
+  function syncEdges() {
+    const max = tabBar.scrollWidth - tabBar.clientWidth;
+    tabBar.classList.toggle('has-more-start', max > 1 && tabBar.scrollLeft > 1);
+    tabBar.classList.toggle('has-more-end', max > 1 && tabBar.scrollLeft < max - 1);
+  }
+  function revealTab(button) {
+    if (!button?.isConnected) return;
+    const bar = tabBar.getBoundingClientRect();
+    const rect = button.getBoundingClientRect();
+    if (rect.left < bar.left + EDGE_MARGIN) tabBar.scrollLeft -= bar.left + EDGE_MARGIN - rect.left;
+    else if (rect.right > bar.right - EDGE_MARGIN) tabBar.scrollLeft += rect.right - (bar.right - EDGE_MARGIN);
+    syncEdges();
+  }
+  tabBar.addEventListener('scroll', syncEdges, { passive: true });
+  if (typeof ResizeObserver === 'function') {
+    // Toggling the fade classes never changes the strip's size, so this
+    // cannot feed back into another resize notification.
+    new ResizeObserver(() => {
+      syncEdges();
+      revealTab(buttons.find((button) => button.classList.contains('is-active')));
+    }).observe(tabBar);
+  }
 
   return {
     node: el('div', {}, [tabBar, panelHost]),
@@ -340,5 +383,119 @@ export function confirmDialog({ title, message, confirmLabel = 'Confirm', cancel
     dialog.showModal();
     cancelButton.focus();
   });
+}
+
+/**
+ * A general-purpose modal on the native `<dialog>` element (focus trapping,
+ * Escape and backdrop semantics come from the browser).
+ *
+ * @param {object} input
+ * @param {string} input.title
+ * @param {string} [input.subtitle]
+ * @param {Array<Node>} input.content
+ * @param {Array<Node>} [input.footer]
+ * @param {boolean} [input.wide]
+ * @param {boolean} [input.dismissible=true] Escape and backdrop close the dialog.
+ * @returns {{ dialog: HTMLDialogElement, close: () => void, closed: Promise<void> }}
+ */
+export function modalDialog({ title, subtitle, content, footer = [], wide = false, dismissible = true }) {
+  const titleId = `dialog-title-${Math.random().toString(36).slice(2, 9)}`;
+  const dialog = el(`dialog.modal${wide ? '.modal--wide' : ''}`, { 'aria-labelledby': titleId }, [
+    el('div.modal__header', {}, [
+      el('div', {}, [el('h2', { id: titleId, text: title }), subtitle ? el('p', { text: subtitle }) : null]),
+      dismissible
+        ? el('button.modal__close', { type: 'button', 'aria-label': 'Close dialog', on: { click: () => close() } }, [icon('close', { size: 16 })])
+        : null
+    ]),
+    el('div.modal__body', {}, content),
+    footer.length > 0 ? el('div.modal__footer', {}, footer) : null
+  ]);
+
+  let resolveClosed;
+  const closed = new Promise((resolve) => {
+    resolveClosed = resolve;
+  });
+  let done = false;
+  function close() {
+    if (done) return;
+    done = true;
+    if (dialog.open) dialog.close();
+    dialog.remove();
+    resolveClosed();
+  }
+
+  dialog.addEventListener('cancel', (event) => {
+    if (!dismissible) event.preventDefault();
+    else close();
+  });
+  // Browsers may force-close even a non-dismissible dialog (Chrome's close
+  // watcher honours a repeated Escape); always clean up and settle.
+  dialog.addEventListener('close', () => close());
+  dialog.addEventListener('click', (event) => {
+    if (dismissible && event.target === dialog) close();
+  });
+
+  document.body.append(dialog);
+  dialog.showModal();
+  requestAnimationFrame(() => {
+    const focusTarget = dialog.querySelector('[autofocus], input:not([type=hidden]):not([readonly]), select, textarea, .modal__footer .btn--primary');
+    focusTarget?.focus();
+  });
+  return { dialog, close, closed };
+}
+
+async function copyText(text, input) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Clipboard API unavailable (e.g. insecure context): select for Ctrl+C.
+    input?.select();
+    return false;
+  }
+}
+
+/**
+ * Shows a credential exactly once (API key, webhook signing secret, temporary
+ * password) with a copy button. It cannot be dismissed by accident: the user
+ * must confirm they have stored it.
+ *
+ * @param {object} input
+ * @param {string} input.title
+ * @param {string} input.message
+ * @param {string} input.secret
+ * @param {string} input.label
+ * @param {Array<Node>} [input.extra]
+ * @returns {Promise<void>}
+ */
+export function revealSecretDialog({ title, message, secret, label, extra = [] }) {
+  const inputId = `secret-${Math.random().toString(36).slice(2, 9)}`;
+  const input = el('input.secret-reveal__value', { id: inputId, type: 'text', readOnly: true, value: secret, autocomplete: 'off' });
+  const status = el('p.secret-reveal__status', { role: 'status' });
+  const copyButton = el('button.btn.btn--ghost', { type: 'button', on: {
+    click: async () => {
+      const copied = await copyText(secret, input);
+      status.textContent = copied ? 'Copied to the clipboard.' : 'Selected — press Ctrl+C (or ⌘C) to copy.';
+    }
+  } }, [icon('documents', { size: 14 }), el('span', { text: 'Copy' })]);
+  const done = el('button.btn.btn--primary', { type: 'button', text: 'I have stored it safely' });
+  const modal = modalDialog({
+    title,
+    dismissible: false,
+    content: [
+      el('p.modal__lead', { text: message }),
+      el('div.secret-reveal', {}, [
+        el('label', { for: inputId, text: label }),
+        el('div.secret-reveal__row', {}, [input, copyButton]),
+        status
+      ]),
+      el('p.secret-reveal__warning', {}, [icon('alert', { size: 14 }), el('span', { text: 'It will not be shown again.' })]),
+      ...extra
+    ],
+    footer: [done]
+  });
+  done.addEventListener('click', () => modal.close());
+  requestAnimationFrame(() => input.select());
+  return modal.closed;
 }
 

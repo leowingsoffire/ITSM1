@@ -3,6 +3,7 @@
  */
 import { api } from '../api.js';
 import { icon } from '../icons.js';
+import { currentUser } from '../session.js';
 import { el, formatDateTime, formatDuration, formatPercent, relativeTime, toast } from '../util.js';
 import { card, dataTable, loading, pageHeader, select } from './common.js';
 
@@ -34,7 +35,7 @@ export async function render({ id }) {
   const host = el('div', {}, [loading('Loading workflow…')]);
   node.append(host);
 
-  const form = { action: 'approve', actor: 'operations.user@vgc.com', note: '', assignee: '' };
+  const form = { action: 'approve', note: '', assignee: '' };
 
   async function paint() {
     let workflow;
@@ -87,18 +88,6 @@ export async function render({ id }) {
       )
     );
 
-    const actorInput = el('input', {
-      id: 'wf-actor',
-      type: 'text',
-      value: form.actor,
-      maxlength: '80',
-      'aria-describedby': 'wf-actor-help'
-    });
-    actorInput.addEventListener('input', (event) => {
-      form.actor = event.target.value;
-      actorError.textContent = '';
-    });
-
     const noteInput = el('textarea', { id: 'wf-note', rows: '3', maxlength: '600', placeholder: 'Optional decision note…' });
     noteInput.value = form.note;
     noteInput.addEventListener('input', (event) => {
@@ -120,22 +109,14 @@ export async function render({ id }) {
     assigneeField.append(assigneeError);
     assigneeField.hidden = form.action !== 'reassign';
 
-    const actorError = el('p.field__error', { id: 'wf-actor-error', role: 'alert' });
-
     const submit = el('button.btn.btn--primary', { type: 'submit', text: 'Apply action' });
 
     const actionForm = el('form.stack', {
       on: {
         submit: async (event) => {
           event.preventDefault();
-          actorError.textContent = '';
           assigneeError.textContent = '';
 
-          if (!form.actor.trim()) {
-            actorError.textContent = 'An actor is required so the decision is attributable.';
-            actorInput.focus();
-            return;
-          }
           if (form.action === 'reassign' && !form.assignee.trim()) {
             assigneeError.textContent = 'Provide the queue or person to reassign to.';
             return;
@@ -146,7 +127,6 @@ export async function render({ id }) {
           try {
             await api.workflowAction(workflow.documentId, {
               action: form.action,
-              actor: form.actor.trim(),
               note: form.note.trim() || undefined,
               assignee: form.assignee.trim() || undefined
             });
@@ -172,8 +152,11 @@ export async function render({ id }) {
           assigneeField.hidden = value !== 'reassign';
         }
       }),
-      el('div.field', {}, [el('label', { text: 'Actor', htmlFor: 'wf-actor' }), actorInput, actorError,
-        el('p.field__help', { id: 'wf-actor-help', text: 'Recorded on the audit trail against this transition.' })]),
+      el('p.field__help', { id: 'wf-actor-help' }, [
+        'Recorded on the audit trail as ',
+        el('strong', { text: currentUser()?.email ?? 'you' }),
+        '.'
+      ]),
       assigneeField,
       el('div.field', {}, [el('label', { text: 'Note', htmlFor: 'wf-note' }), noteInput]),
       el('div.form-actions', {}, [submit])

@@ -127,3 +127,15 @@ export function titleCase(value) {
     .toLowerCase()
     .replace(/\b[a-z]/g, (character) => character.toUpperCase());
 }
+
+/**
+ * The address as people read it: a dual-stack socket reports IPv4 clients as
+ * IPv4-mapped IPv6 (`::ffff:203.0.113.7`), which is shown as `203.0.113.7`.
+ * Returns null when there is no address, and caps the length for storage.
+ */
+export function displayIp(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const text = String(value).trim();
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(text);
+  return (mapped ? mapped[1] : text).slice(0, 64);
+}

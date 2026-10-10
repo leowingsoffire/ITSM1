@@ -79,6 +79,7 @@ export async function render(params = {}) {
       ]),
       {
         label: 'Document library',
+        stack: 600,
         emptyMessage: 'No documents match the current filters.',
         label: 'Documents',
         onRowClick: (index) => {

@@ -14,6 +14,9 @@
  * this is still a demo boundary, not real authentication/authorization.
  */
 export const Role = Object.freeze({ ADMIN: 'admin', USER: 'user' });
+/** The names people see for each role — `user` is presented as "Operator" everywhere. */
+export const RoleLabel = Object.freeze({ [Role.ADMIN]: 'Administrator', [Role.USER]: 'Operator' });
+export const roleLabel = (role) => RoleLabel[role] ?? String(role);
 
 import { VGC_LOGO_DATA_URL } from '../assets/vgc-logo.js';
 

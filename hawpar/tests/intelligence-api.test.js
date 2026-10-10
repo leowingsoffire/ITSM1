@@ -16,11 +16,14 @@ let server;
 let baseUrl;
 let documentId;
 
-const get = (path) => fetch(`${baseUrl}${path}`);
+const OPERATOR = 'tester@vgc.com';
+const get = (path) => fetch(`${baseUrl}${path}`, { headers: { 'x-user-operator': OPERATOR } });
 const postJson = (path, body) =>
   fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The test-only principal: attribution comes from the authenticated
+    // caller, never from a field in the request body.
+    headers: { 'Content-Type': 'application/json', 'x-user-operator': OPERATOR },
     body: JSON.stringify(body)
   });
 
@@ -150,18 +153,14 @@ describe('workflow API', () => {
     assert.equal(response.status, 404);
   });
 
-  test('should_reject_a_workflow_action_without_an_action_or_an_actor', async () => {
-    const missingAction = await postJson(`/workflows/${documentId}/actions`, { actor: 'tester@vgc.com' });
+  test('should_reject_a_workflow_action_without_an_action', async () => {
+    const missingAction = await postJson(`/workflows/${documentId}/actions`, { note: 'No action supplied.' });
     assert.equal(missingAction.status, 400);
-
-    const missingActor = await postJson(`/workflows/${documentId}/actions`, { action: 'approve' });
-    assert.equal(missingActor.status, 400);
   });
 
   test('should_reject_an_action_that_is_not_in_the_vocabulary', async () => {
     const response = await postJson(`/workflows/${documentId}/actions`, {
-      action: 'obliterate',
-      actor: 'tester@vgc.com'
+      action: 'obliterate'
     });
     assert.equal(response.status, 400);
   });
@@ -170,7 +169,6 @@ describe('workflow API', () => {
     const before = await (await get(`/workflows/${documentId}`)).json();
     const response = await postJson(`/workflows/${documentId}/actions`, {
       action: 'comment',
-      actor: 'tester@vgc.com',
       note: 'Reviewed during the integration test.'
     });
     assert.equal(response.status, 200);
@@ -178,15 +176,25 @@ describe('workflow API', () => {
     const after = await (await get(`/workflows/${documentId}`)).json();
     assert.equal(after.history.length, before.history.length + 1);
     const entry = after.history.at(-1);
-    assert.equal(entry.actor, 'tester@vgc.com');
+    assert.equal(entry.actor, OPERATOR);
     assert.equal(entry.action, 'comment');
     assert.ok(entry.at.length > 0);
+  });
+
+  test('should_ignore_a_forged_actor_in_the_request_body', async () => {
+    const response = await postJson(`/workflows/${documentId}/actions`, {
+      action: 'comment',
+      actor: 'someone.else@example.com',
+      note: 'Attempted impersonation.'
+    });
+    assert.equal(response.status, 200);
+    const workflow = await (await get(`/workflows/${documentId}`)).json();
+    assert.equal(workflow.history.at(-1).actor, OPERATOR, 'the audit trail must name the authenticated caller');
   });
 
   test('should_persist_a_reassignment_so_the_queue_reflects_the_new_owner', async () => {
     const response = await postJson(`/workflows/${documentId}/actions`, {
       action: 'reassign',
-      actor: 'tester@vgc.com',
       assignee: 'Finance controller'
     });
     assert.equal(response.status, 200);
@@ -196,8 +204,7 @@ describe('workflow API', () => {
 
   test('should_require_an_assignee_when_reassigning', async () => {
     const response = await postJson(`/workflows/${documentId}/actions`, {
-      action: 'reassign',
-      actor: 'tester@vgc.com'
+      action: 'reassign'
     });
     assert.equal(response.status, 400);
   });

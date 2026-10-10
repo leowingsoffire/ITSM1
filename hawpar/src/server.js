@@ -4,18 +4,26 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
 import { logger } from './lib/logger.js';
+import { flushActivityWrites } from './services/activity.service.js';
+import { initialiseIdentity } from './services/identity.service.js';
+import { flushIdentityWrites } from './services/identity.store.js';
+import { pipelineEvents } from './services/pipeline.service.js';
 import { flushPendingWrites, initialiseStore } from './services/store.service.js';
 import { initialiseSettingsStore } from './services/settings.service.js';
 import { initialiseTenantRegistry } from './services/tenant.service.js';
 import { initialiseTemplateStore } from './services/templates.service.js';
+import { startWebhookDispatcher } from './services/webhooks.service.js';
 
 const SHUTDOWN_GRACE_MS = 10000;
 
 async function main() {
   await initialiseTenantRegistry();
+  // Identity resolves workspace membership against the tenant registry.
+  await initialiseIdentity();
   await initialiseStore();
   await initialiseSettingsStore();
   await initialiseTemplateStore();
+  startWebhookDispatcher(pipelineEvents);
 
   const app = createApp();
   const server = app.listen(config.port, () => {
@@ -40,7 +48,7 @@ async function main() {
     timer.unref();
 
     server.close(async () => {
-      await flushPendingWrites();
+      await Promise.all([flushPendingWrites(), flushIdentityWrites(), flushActivityWrites()]);
       logger.info('Shutdown complete.');
       process.exit(0);
     });

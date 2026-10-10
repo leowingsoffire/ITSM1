@@ -335,6 +335,7 @@ export async function render() {
               relativeTime(item.updatedAt)
             ]),
             {
+              stack: 600,
               emptyMessage: 'No workflows match these filters.',
               label: 'Workflow instances',
               onRowClick: (index) => {

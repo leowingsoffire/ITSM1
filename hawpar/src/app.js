@@ -7,7 +7,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from './config/index.js';
 import {
-  apiKeyAuth,
   cors,
   correlationId,
   errorHandler,
@@ -17,6 +16,9 @@ import {
   securityHeaders,
   tenantContext
 } from './middleware/index.js';
+import { authenticate, requirePrincipal } from './middleware/auth.js';
+import adminRoutes from './routes/admin.routes.js';
+import authRoutes from './routes/auth.routes.js';
 import documentRoutes from './routes/documents.routes.js';
 import intelligenceRoutes from './routes/intelligence.routes.js';
 import onboardingRoutes from './routes/onboarding.routes.js';
@@ -68,22 +70,30 @@ export function createApp() {
     );
   }
 
-  // A single /api pipeline. These middlewares used to be mounted on five
-  // overlapping `/api` chains; because a non-matching router falls through to
-  // the next chain, every request re-ran the rate limiter, the API-key check
-  // and tenant resolution once per chain it passed. A `GET /api/documents`
-  // consumed five rate-limit slots, so the configured 600 requests/minute was
-  // really ~120 — and differed per route. Mounting one router guarantees each
-  // request is counted, authenticated and tenant-resolved exactly once.
+  // A single /api pipeline, so each request is rate-limited, authenticated and
+  // workspace-resolved exactly once (overlapping `/api` chains used to re-run
+  // the limiter per chain and silently divide the configured limit).
+  //
+  // 1. `authenticate` identifies the caller (session cookie, workspace API key,
+  //    platform API key, or the test-only bypass). It never rejects anonymous
+  //    callers itself.
+  // 2. Auth and onboarding routes stay reachable without a session: they are
+  //    how a session is created. Each checks its own preconditions.
+  // 3. `requirePrincipal` rejects everyone else who is anonymous (except the
+  //    read-only discovery endpoints the sign-in screen boots from).
+  // 4. `tenantContext` resolves the workspace and the caller's role in it,
+  //    refusing workspaces the caller is not a member of.
   const api = express.Router();
-  api.use(rateLimit('api'), apiKeyAuth);
-  // Onboarding is deliberately ahead of tenant resolution: it is the endpoint
-  // that creates the tenant, so there is nothing to resolve yet.
+  api.use(rateLimit('api'));
+  api.use(authenticate);
+  api.use(authRoutes);
   api.use(onboardingRoutes);
+  api.use(requirePrincipal);
   api.use(tenantContext);
   api.use(platformRoutes);
   api.use(intelligenceRoutes);
   api.use(settingsRoutes);
+  api.use(adminRoutes);
   api.use('/documents', documentRoutes);
   api.use('/templates', templateRoutes);
 

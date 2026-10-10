@@ -1,16 +1,16 @@
-/* Browser smoke test: login gate + main views. Run: node scripts/e2e-smoke.mjs */
+/* Browser smoke test: sign-in + main views. Run: node scripts/e2e-smoke.mjs
+ * Needs E2E_EMAIL/E2E_PASSWORD (or ADMIN_EMAIL/ADMIN_PASSWORD); E2E_BASE picks the server. */
 import { chromium } from 'playwright-core';
-import { CHROMIUM_EXE, artifact, dismissOnboarding } from './lib/e2e-session.mjs';
+import { CHROMIUM_EXE, artifact, signIn } from './lib/e2e-session.mjs';
 
-const EXE = CHROMIUM_EXE;
-const BASE = process.env.E2E_BASE ?? 'http://localhost:8080';
+const BASE = (process.env.E2E_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 const results = [];
 const ok = (name, pass, detail = '') => {
   results.push({ name, pass, detail });
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
 };
 
-const browser = await chromium.launch({ executablePath: EXE, headless: true });
+const browser = await chromium.launch({ executablePath: CHROMIUM_EXE, headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -19,36 +19,33 @@ try {
 
   await page.goto(BASE, { waitUntil: 'load' });
 
-  // 0. A first-time visitor is offered the onboarding wizard; this suite
-  //    verifies the shared demo workspace, so take its explicit opt-out.
-  const sawWizard = await dismissOnboarding(page);
-  ok('onboarding wizard offers a shared-workspace opt-out', sawWizard);
+  // 1. A visitor without a session gets the sign-in screen
+  await page.waitForSelector('#auth-email', { timeout: 15000 });
+  ok('sign-in screen rendered', true);
 
-  // 1. Login gate appears
-  await page.waitForSelector('#auth-passphrase', { timeout: 10000 });
-  ok('login gate rendered', true);
+  // 2. Wrong credentials are rejected. An unknown address is used so that no
+  //    real account collects a failed attempt towards its lockout.
+  await page.fill('#auth-email', `nobody.${Date.now()}@example.invalid`);
+  await page.fill('#auth-password', 'definitely-not-the-password');
+  await page.click('button.auth__submit');
+  const error = await page
+    .waitForFunction(() => document.querySelector('.auth__error')?.textContent.trim() || '', null, { timeout: 10000 })
+    .then((handle) => handle.jsonValue())
+    .catch(() => '');
+  ok('wrong credentials rejected', /incorrect/i.test(error), error.slice(0, 60));
 
-  // 2. Wrong passphrase is rejected
-  await page.fill('#auth-passphrase', 'wrong-pass');
-  await page.click('button.auth__submit', { force: true });
-  const err = await page.waitForSelector('.auth__error', { timeout: 5000 });
-  ok('wrong passphrase rejected', Boolean(err), (await err.textContent()).slice(0, 60));
-
-  // 3. Correct passphrase enters the workspace
-  await page.fill('#auth-passphrase', 'vgc');
-  await page.click('button.auth__submit', { force: true });
-  await page.waitForSelector('.auth', { state: 'detached', timeout: 10000 });
-  ok('login accepted, gate dismissed', true);
+  // 3. Valid credentials enter the workspace
+  await signIn(page);
+  ok('sign-in accepted, workspace opened', true);
 
   // 4. Dashboard renders with KPIs
-  await page.waitForSelector('div.view', { timeout: 10000 });
-  await page.waitForFunction(() => document.querySelectorAll('.kpi').length >= 3, null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelectorAll('.kpi').length >= 3, null, { timeout: 15000 });
   const kpis = await page.$$eval('.kpi', (n) => n.length);
   ok('dashboard KPIs rendered', kpis >= 3, `${kpis} KPI cards`);
 
-  // 5. Session persists across reload (sessionStorage gate)
+  // 5. The session cookie survives a reload
   await page.reload({ waitUntil: 'load' });
-  await page.waitForSelector('div.view', { timeout: 10000 });
+  await page.waitForSelector('#view-root div.view', { timeout: 15000 });
   const gateGone = (await page.$('.auth')) === null;
   ok('session persists on reload', gateGone);
 
@@ -63,13 +60,22 @@ try {
     ok(`route #/${r} renders`, !hasError && text > 40, `${text} chars`);
   }
 
-  // 7. Documents table shows the seeded corpus; open a document detail
+  // 7. The documents table lists the workspace's documents; open one. An empty
+  //    workspace first loads the sample pack, exactly as Ingest offers to.
+  let listing = await page.evaluate(async () => (await fetch('/api/documents?pageSize=1')).json());
+  if (listing.total === 0) {
+    await page.evaluate(async () => {
+      await fetch('/api/samples/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sampleIds: [] }) });
+    });
+    await page.waitForFunction(async () => (await (await fetch('/api/documents?pageSize=1')).json()).total > 0, null, { timeout: 60000, polling: 1000 });
+    listing = await page.evaluate(async () => (await fetch('/api/documents?pageSize=1')).json());
+  }
   await page.evaluate(() => { location.hash = '#/documents'; });
-  await page.waitForFunction(() => document.querySelectorAll('table tbody tr').length > 0, null, { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelectorAll('table tbody tr').length > 0, null, { timeout: 15000 });
   const rows = await page.$$eval('table tbody tr', (n) => n.length);
-  ok('documents table populated', rows >= 10, `${rows} rows`);
+  ok('documents table populated', rows >= Math.min(listing.total, 10), `${rows} rows of ${listing.total}`);
 
-  const docId = await page.evaluate(async () => (await (await fetch('/api/documents?pageSize=1')).json()).items[0].id);
+  const docId = listing.items[0].id;
   await page.evaluate((id) => { location.hash = `#/documents/${id}`; }, docId);
   await page.waitForTimeout(1200);
   const detailLen = await page.$eval('div.view', (v) => v.textContent.trim().length);
