@@ -23,7 +23,7 @@ const filters = {
 
 export async function render() {
   const node = el('div.view');
-  const overviewHost = el('div');
+  const overviewHost = el('div.stack');
   const boardHost = el('div', {}, [loading('Loading workflows…')]);
 
   let definitions = [];
@@ -42,8 +42,7 @@ export async function render() {
         })
       ]
     }),
-    overviewHost,
-    boardHost
+    el('div.stack', {}, [overviewHost, boardHost])
   );
 
   function filterBar() {

@@ -94,7 +94,7 @@ function renderPageSvg(payload, activeFieldKey) {
 
 function buildViewer(record) {
   const canvas = el('div.viewer__canvas');
-  const pageInput = el('input.viewer__page-input', { type: 'number', min: 1, max: record.pageCount, value: 1 });
+  const pageInput = el('input.viewer__page-input', { type: 'number', min: 1, max: record.pageCount, value: 1, 'aria-label': 'Page number' });
   const meta = el('span.text-muted');
   const stored = record.pageIndex.length;
 
@@ -134,7 +134,7 @@ function buildViewer(record) {
       on: { click: () => load(viewerState.pageNumber - 1) }
     }),
     pageInput,
-    el('span.text-muted', { text: `/ ${formatNumber(stored)}${record.pagesTruncated ? ` of ${formatNumber(record.pageCount)}` : ''}` }),
+    el('span.viewer__page-total', { text: `/ ${formatNumber(stored)}${record.pagesTruncated ? ` of ${formatNumber(record.pageCount)}` : ''}` }),
     el('button.btn.btn--ghost.btn--sm', {
       type: 'button',
       text: 'Next ›',
@@ -324,7 +324,7 @@ function tablesPanel(tables) {
         dataTable(
           table.columns.map((column, index) => ({ label: column, numeric: index > 0 })),
           table.rows.slice(0, 40).map((row) => row.map((cell) => String(cell))),
-          { label: `${table.title} (page ${table.pageNumber})` }
+          { label: `${table.title} (page ${table.pageNumber})`, stack: false }
         ),
         table.rows.length > 40 ? el('p.text-muted', { text: `Showing 40 of ${table.rows.length} rows.` }) : null
       ])

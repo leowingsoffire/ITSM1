@@ -17,7 +17,7 @@ let typeFilter = '';
 
 export async function render() {
   const node = el('div.view');
-  const host = el('div', {}, [loading('Scoring the corpus…')]);
+  const host = el('div.stack', {}, [loading('Scoring the corpus…')]);
 
   node.append(
     pageHeader({

@@ -14,6 +14,10 @@ const money = (value, currency) =>
     ? '—'
     : `${currency ? `${currency} ` : ''}${Number(value).toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Codes and references read best in monospace; the em-dash placeholder stays
+// in the body font so every empty cell on the page looks the same.
+const mono = (value) => (value === null || value === undefined || value === '' ? '—' : el('span.mono', { text: String(value) }));
+
 function resultBadge(item) {
   if (item.status === 'pass') return el('span.badge.badge--success', { text: 'Pass' });
   if (item.status === 'info') return el('span.badge.badge--info', { text: 'Info' });
@@ -140,16 +144,16 @@ export async function render(params = {}) {
       { label: 'Product' },
       { label: 'Summary date' },
       { label: 'Attachment date' },
-      { label: 'Date' },
+      { label: 'Date check' },
       { label: 'Summary amt', numeric: true },
       { label: 'Attachment amt', numeric: true },
-      { label: 'Amount' },
+      { label: 'Amount check' },
       { label: 'Mark-up' }
     ],
     lineComparison.map((line) => [
       line.vendor ?? '—',
-      el('span.mono', { text: line.invoiceRef ?? '—' }),
-      el('span.mono', { text: line.productType ?? '—' }),
+      mono(line.invoiceRef),
+      mono(line.productType),
       line.summaryDate ?? '—',
       line.attachmentDate ?? (line.matched ? '—' : 'no attachment'),
       okBadge(line.dateOk),
@@ -171,7 +175,7 @@ export async function render(params = {}) {
       { label: 'Result' }
     ],
     summationRows.map((row) => [
-      el('span.mono', { text: row.productType }),
+      mono(row.productType),
       money(row.stated, currency),
       row.actual === null ? '—' : money(row.actual, currency),
       row.delta === null ? '—' : money(row.delta, currency),
@@ -201,10 +205,10 @@ export async function render(params = {}) {
       support.documentKind ?? '—',
       support.vendor ?? '—',
       support.reference ?? '—',
-      el('span.mono', { text: support.productType ?? '—' }),
+      mono(support.productType),
       support.documentDate ?? '—',
       support.amount === null ? '—' : money(support.amount, currency),
-      el('span.mono', { text: support.apCode ?? '—' }),
+      mono(support.apCode),
       support.apCodeMatches ? el('span.badge.badge--success', { text: 'Yes' }) : el('span.badge.badge--danger', { text: 'No' })
     ]),
     {

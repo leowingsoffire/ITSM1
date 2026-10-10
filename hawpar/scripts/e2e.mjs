@@ -187,6 +187,44 @@ async function smallTargets(page) {
   });
 }
 
+/**
+ * A data table fits, stacks into label/value rows, or scrolls inside a
+ * labelled, focusable region (`dataTable` in views/common.js). One that
+ * overflows without that region looks clipped and strands its off-screen
+ * columns from keyboard users — for example a stacked table whose content is
+ * still too wide.
+ */
+async function tableProblems(page) {
+  return page.evaluate(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return Array.from(document.querySelectorAll('#view-root .table-wrap'))
+      .filter((wrap) => wrap.getClientRects().length > 0 && wrap.scrollWidth > wrap.clientWidth + 1)
+      .filter(
+        (wrap) =>
+          !(
+            wrap.classList.contains('is-scrollable') &&
+            wrap.tabIndex === 0 &&
+            wrap.getAttribute('role') === 'region' &&
+            wrap.getAttribute('aria-label')
+          )
+      )
+      .map((wrap) => {
+        // Name the innermost body element past the right edge so a failure points at its cause.
+        const edge = wrap.getBoundingClientRect().right + 1;
+        const past = (node) => node.getBoundingClientRect().right > edge;
+        const culprit = Array.from(wrap.querySelectorAll('tbody *')).find((node) => past(node) && !Array.from(node.children).some(past));
+        const where = culprit
+          ? ` (${culprit.tagName.toLowerCase()}${typeof culprit.className === 'string' && culprit.className ? `.${culprit.className.trim().split(/\s+/).join('.')}` : ''}` +
+            ` "${(culprit.textContent ?? '').trim().slice(0, 40)}")`
+          : '';
+        return (
+          `"${wrap.dataset.table ?? 'table'}" overflows by ${wrap.scrollWidth - wrap.clientWidth}px` +
+          `${wrap.classList.contains('is-stacked') ? ' while stacked' : ''} with no scroll region${where}`
+        );
+      });
+  });
+}
+
 async function layoutProblems(page) {
   return page.evaluate(() => {
     const problems = [];
@@ -218,6 +256,118 @@ async function layoutProblems(page) {
       if (problems.length > 6) break;
     }
     return problems;
+  });
+}
+
+/**
+ * Composition defects that an overflow check cannot see: in-flow children of
+ * a grid or flex container drawn over each other (a field sliding under the
+ * next control), a card grid of three or more columns whose last row holds a
+ * single orphaned card, and stacked boxed sections (cards, KPI tiles) that
+ * touch with no visible gap between them.
+ */
+async function compositionProblems(page) {
+  return page.evaluate(async () => {
+    const finite = document
+      .getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity);
+    await Promise.race([
+      Promise.all(finite.map((animation) => animation.finished.catch(() => {}))),
+      new Promise((resolve) => setTimeout(resolve, 2000))
+    ]);
+
+    const root = document.getElementById('view-root');
+    const describe = (node) => {
+      const classes = typeof node.className === 'string' ? node.className.trim().split(/\s+/).filter(Boolean) : [];
+      const text = (node.getAttribute('aria-label') || node.getAttribute('placeholder') || node.textContent || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 24);
+      return `${node.tagName.toLowerCase()}${classes.slice(0, 2).map((name) => `.${name}`).join('')} "${text}"`;
+    };
+    const shown = (node) => {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.display === 'contents' || style.visibility === 'hidden') return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+    const overlaps = [];
+    const lone = [];
+    const touching = [];
+
+    for (const parent of root.querySelectorAll('*')) {
+      const display = getComputedStyle(parent).display;
+      if (!/(grid|flex)$/.test(display)) continue;
+      const kids = [...parent.children].filter(
+        (kid) => shown(kid) && !['absolute', 'fixed'].includes(getComputedStyle(kid).position)
+      );
+      for (let i = 0; i < kids.length; i += 1) {
+        const a = kids[i].getBoundingClientRect();
+        for (let j = i + 1; j < kids.length; j += 1) {
+          const b = kids[j].getBoundingClientRect();
+          const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+          const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          if (width <= 2 || height <= 2) continue;
+          // Items explicitly placed in the same grid cell are layered on purpose.
+          const first = getComputedStyle(kids[i]);
+          const second = getComputedStyle(kids[j]);
+          const placed = (style) => style.gridRowStart !== 'auto' && style.gridColumnStart !== 'auto';
+          if (
+            display.endsWith('grid') &&
+            placed(first) &&
+            placed(second) &&
+            first.gridRowStart === second.gridRowStart &&
+            first.gridColumnStart === second.gridColumnStart
+          ) {
+            continue;
+          }
+          overlaps.push(`${describe(kids[i])} overlaps ${describe(kids[j])} by ${Math.round(width)}x${Math.round(height)}px`);
+        }
+      }
+    }
+
+    for (const grid of root.querySelectorAll('.grid')) {
+      const tops = [...grid.children]
+        .filter(shown)
+        .map((kid) => kid.getBoundingClientRect().top)
+        .sort((x, y) => x - y);
+      const rows = [];
+      let rowTop = null;
+      for (const top of tops) {
+        if (rowTop === null || top - rowTop > 2) {
+          rows.push(0);
+          rowTop = top;
+        }
+        rows[rows.length - 1] += 1;
+      }
+      if (rows.length > 1 && rows.at(-1) === 1 && Math.max(...rows) > 2) {
+        lone.push(`${describe(grid)} lays out ${tops.length} items as ${rows.join('+')}`);
+      }
+    }
+
+    const boxes = [...root.querySelectorAll('*')].filter((node) => {
+      if (node.matches('input, select, textarea, button, a, label, option') || node.closest('svg')) return false;
+      if (!shown(node)) return false;
+      const style = getComputedStyle(node);
+      if (style.position === 'fixed') return false;
+      const edge = (side) =>
+        parseFloat(style[`border${side}Width`]) > 0 && style[`border${side}Color`] !== 'rgba(0, 0, 0, 0)';
+      if (!edge('Top') || !edge('Bottom') || !edge('Left')) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 120 && rect.height >= 36;
+    });
+    for (const upper of boxes) {
+      const a = upper.getBoundingClientRect();
+      for (const lower of boxes) {
+        if (upper === lower || upper.contains(lower) || lower.contains(upper)) continue;
+        const b = lower.getBoundingClientRect();
+        if (Math.min(a.right, b.right) - Math.max(a.left, b.left) < 20) continue;
+        const gap = b.top - a.bottom;
+        if (gap > -2 && gap < 6) touching.push(`${describe(upper)} touches ${describe(lower)} (gap ${Math.round(gap)}px)`);
+      }
+    }
+
+    return { overlaps, lone, touching };
   });
 }
 
@@ -872,6 +1022,48 @@ const fixtureMember = await fixtureContext.request.post(`${BASE}/api/admin/membe
 const fixtureMemberId = fixtureMember.ok() ? (await fixtureMember.json()).member?.id : null;
 ok('responsive sweep fixture: a temporary operator is added', Boolean(fixtureMemberId), `HTTP ${fixtureMember.status()}`);
 
+// Detail screens are swept too, using records the journey above created. The
+// journey ingests no marketing claim, so one is ingested here with its two
+// supporting bills; otherwise the claim reconciliation screen would go unchecked.
+const existingClaims = await fixtureContext.request.get(`${BASE}/api/claims`, { headers: fixtureHeaders });
+if (existingClaims.ok() && ((await existingClaims.json()).items ?? []).length === 0) {
+  const SETTLED = ['completed', 'needs-review', 'approved', 'rejected', 'failed'];
+  const run = await fixtureContext.request.post(`${BASE}/api/samples/run`, {
+    headers: fixtureHeaders,
+    data: { sampleIds: ['sample-mkt-claim-pop', 'sample-mkt-support-pop-1', 'sample-mkt-support-pop-2'] }
+  });
+  let pending = run.ok() ? ((await run.json()).accepted ?? []).map((doc) => doc.id) : [];
+  const deadline = Date.now() + 180000;
+  while (pending.length > 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const statuses = await Promise.all(
+      pending.map(async (id) => {
+        const response = await fixtureContext.request.get(`${BASE}/api/documents/${encodeURIComponent(id)}`, {
+          headers: fixtureHeaders
+        });
+        return response.ok() ? (await response.json()).status : 'unknown';
+      })
+    );
+    pending = pending.filter((_, index) => !SETTLED.includes(statuses[index]));
+  }
+}
+const detailRoutes = [];
+for (const [prefix, path, key] of [
+  ['documents', '/api/documents?pageSize=1', 'id'],
+  ['workflows', '/api/workflows?pageSize=1', 'documentId'],
+  ['claims', '/api/claims', 'id']
+]) {
+  const response = await fixtureContext.request.get(`${BASE}${path}`, { headers: fixtureHeaders });
+  const id = response.ok() ? (await response.json()).items?.[0]?.[key] : null;
+  if (id) detailRoutes.push(`${prefix}/${encodeURIComponent(id)}`);
+}
+ok(
+  'responsive sweep covers document, workflow and claim detail',
+  detailRoutes.length === 3,
+  detailRoutes.map((route) => route.split('/')[0]).join(', ') || 'none'
+);
+const sweepRoutes = [...ROUTES, ...detailRoutes];
+
 try {
 for (const viewport of VIEWPORTS) {
   const session = await newSession(viewport);
@@ -880,7 +1072,12 @@ for (const viewport of VIEWPORTS) {
     const illegible = [];
     const obstructed = [];
     const undersized = [];
-    for (const route of ROUTES) {
+    const overlapping = [];
+    const orphaned = [];
+    const cramped = [];
+    const clippedTables = [];
+    for (const route of sweepRoutes) {
+      const label = route.includes('/') ? `${route.split('/')[0]}/:id` : route;
       try {
         await goto(session.page, route);
       } catch (error) {
@@ -888,20 +1085,25 @@ for (const viewport of VIEWPORTS) {
           .evaluate(() => (document.getElementById('view-root')?.textContent ?? '').trim().slice(0, 160))
           .catch(() => '');
         problems.push(
-          `${route}: ${error.message} | root="${diagnostic}" | console=${session.consoleErrors.slice(-2).join(' / ')} | net=${session.badResponses.slice(-2).join(' / ')}`
+          `${label}: ${error.message} | root="${diagnostic}" | console=${session.consoleErrors.slice(-2).join(' / ')} | net=${session.badResponses.slice(-2).join(' / ')}`
         );
         continue;
       }
       const issues = await layoutProblems(session.page);
-      if (issues.length > 0) problems.push(`${route}: ${issues.join('; ')}`);
+      if (issues.length > 0) problems.push(`${label}: ${issues.join('; ')}`);
+      const composition = await compositionProblems(session.page);
+      overlapping.push(...composition.overlaps.map((entry) => `${label}: ${entry}`));
+      orphaned.push(...composition.lone.map((entry) => `${label}: ${entry}`));
+      cramped.push(...composition.touching.map((entry) => `${label}: ${entry}`));
+      clippedTables.push(...(await tableProblems(session.page)).map((entry) => `${label}: ${entry}`));
       for (const run of await findLowContrastText(session.page)) {
-        illegible.push(`${route}: ${run.label} "${run.text.slice(0, 24)}" at ${run.ratio}:1`);
+        illegible.push(`${label}: ${run.label} "${run.text.slice(0, 24)}" at ${run.ratio}:1`);
       }
       for (const covered of await fabObstructions(session.page)) {
-        obstructed.push(`${route}: ${covered}`);
+        obstructed.push(`${label}: ${covered}`);
       }
       for (const target of await smallTargets(session.page)) {
-        undersized.push(`${route}: ${target}`);
+        undersized.push(`${label}: ${target}`);
       }
       await session.page.evaluate(() => {
         const content = document.querySelector('.content');
@@ -909,11 +1111,31 @@ for (const viewport of VIEWPORTS) {
       });
       await session.page.waitForTimeout(250);
       await session.page.screenshot({
-        path: `${ARTIFACT_DIR}/${viewport.name}-${route}.png`,
+        path: `${ARTIFACT_DIR}/${viewport.name}-${label.replace('/:id', '-detail')}.png`,
         fullPage: false
       });
     }
     ok(`${viewport.name} (${viewport.width}px) has no layout overflow`, problems.length === 0, problems.slice(0, 3).join(' | '));
+    ok(
+      `${viewport.name} (${viewport.width}px) draws no control or section over another`,
+      overlapping.length === 0,
+      overlapping.slice(0, 3).join(' | ')
+    );
+    ok(
+      `${viewport.name} (${viewport.width}px) leaves no lone card on a multi-column row`,
+      orphaned.length === 0,
+      orphaned.slice(0, 3).join(' | ')
+    );
+    ok(
+      `${viewport.name} (${viewport.width}px) keeps a visible gap between stacked sections`,
+      cramped.length === 0,
+      cramped.slice(0, 3).join(' | ')
+    );
+    ok(
+      `${viewport.name} (${viewport.width}px) fits or stacks every table, or scrolls it in a labelled region`,
+      clippedTables.length === 0,
+      clippedTables.slice(0, 3).join(' | ')
+    );
     ok(
       `${viewport.name} (${viewport.width}px) renders every text run legibly`,
       illegible.length === 0,

@@ -76,7 +76,7 @@ export async function render(params = {}) {
     }),
     card({
       body: el('div.filter-bar', {}, [
-        el('div.field', { style: { flex: '1', minWidth: '280px' } }, [el('label', { text: 'Search term' }), input]),
+        el('div.field.field--grow', {}, [el('label', { text: 'Search term' }), input]),
         el('button.btn.btn--primary', { type: 'button', text: 'Search', on: { click: () => runSearch() } })
       ])
     }),

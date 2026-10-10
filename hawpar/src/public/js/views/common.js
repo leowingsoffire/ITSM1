@@ -110,21 +110,26 @@ export function skeletonBlock(variant = 'chart') {
 /**
  * Builds a data table.
  *
- * The wrapper scrolls horizontally on narrow viewports. A plain scroll
- * container cannot be reached by keyboard in Chromium, which would strand the
- * off-screen columns, so it is exposed as a labelled, focusable region.
+ * `stack` decides what happens when the columns do not fit:
+ * - `'fit'` (the default) keeps the grid wherever it fits — as is, or compact
+ *   with headers allowed to wrap — and otherwise shows each row as a block of
+ *   label/value pairs (see `.table-wrap.is-stacked`), so record and analytics
+ *   tables never scroll sideways or look clipped.
+ * - a number of pixels (or `true` for 840) stacks below that wrapper width and
+ *   scrolls above it — list views use 600 so tablets keep scannable columns.
+ * - `false` always keeps the grid, for extracted tables that mirror the
+ *   source document.
  *
- * With `stack`, a table narrower than its threshold (840px for `true`, or a
- * number of pixels) shows each row as a block of label/value pairs instead
- * (see `.table-wrap.is-stacked`), so inline controls and trailing columns such
- * as status stay on screen. Explicit ARIA table roles keep the table
+ * A wrapper that scrolls is exposed as a labelled, focusable region, because
+ * a plain scroll container cannot be reached by keyboard in Chromium and would
+ * strand the off-screen columns. Explicit ARIA table roles keep the table
  * semantics that `display: block` would otherwise strip in some browsers.
  *
  * @param {Array<{label: string, numeric?: boolean}>} columns
  * @param {Array<Array<Node|string>>} rows
- * @param {{onRowClick?: Function, emptyMessage?: string, label?: string, stack?: boolean|number}} [options]
+ * @param {{onRowClick?: Function, emptyMessage?: string, label?: string, stack?: boolean|number|'fit'}} [options]
  */
-export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing to display yet.', label = 'Data table', stack = false } = {}) {
+export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing to display yet.', label = 'Data table', stack = 'fit' } = {}) {
   if (rows.length === 0) return el('div.table-empty', { 'data-table': label, text: emptyMessage });
 
   const stackBelow = stack === true ? 840 : Number(stack) || 0;
@@ -160,12 +165,21 @@ export function dataTable(columns, rows, { onRowClick, emptyMessage = 'Nothing t
   // table would add a focus stop that does nothing. The scroll region is also
   // only named when it exists — a page carrying six non-scrolling tables would
   // otherwise expose six identically-labelled landmarks to a screen reader.
-  // Stacking never changes the wrapper's width, so toggling it here cannot
-  // trigger another resize notification.
+  // A threshold never depends on the wrapper's height, and a 'fit' table is
+  // measured afresh each time (full grid, then compact), so the height change
+  // from compacting or stacking settles after one extra resize notification
+  // instead of oscillating.
+  const overflows = () => wrap.scrollWidth > wrap.clientWidth + 1;
   const syncScrollAffordance = () => {
-    const stacked = stackBelow > 0 && wrap.clientWidth < stackBelow;
+    let stacked = stackBelow > 0 && wrap.clientWidth < stackBelow;
+    if (stack === 'fit') {
+      wrap.classList.remove('is-stacked', 'is-compact');
+      if (overflows()) wrap.classList.add('is-compact');
+      stacked = overflows();
+      if (stacked) wrap.classList.remove('is-compact');
+    }
     wrap.classList.toggle('is-stacked', stacked);
-    const scrollable = !stacked && wrap.scrollWidth > wrap.clientWidth + 1;
+    const scrollable = !stacked && overflows();
     wrap.classList.toggle('is-scrollable', scrollable);
     if (scrollable) {
       wrap.setAttribute('tabindex', '0');

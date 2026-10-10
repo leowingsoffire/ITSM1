@@ -163,7 +163,6 @@ export async function render({ id }) {
     ]);
 
     host.replaceChildren(
-      ...[
       pageHeader({
         title: workflow.definitionName,
         subtitle: `${workflow.document.fileName} · ${workflow.document.typeName} · ${workflow.process}`,
@@ -176,82 +175,83 @@ export async function render({ id }) {
           })
         ]
       }),
-      card({
-        title: 'Status',
-        icon: 'gauge',
-        tone: 'navy',
-        body: el('div.meta-grid', {}, [
-          metaItem('Workflow status', workflow.status),
-          metaItem('Current step', workflow.currentStepName ?? '—'),
-          metaItem('Assignee', workflow.assignee ?? '—'),
-          metaBadge('Priority', workflow.priority, PRIORITY_VARIANT[workflow.priority] ?? 'neutral'),
-          metaItem('Priority score', String(workflow.priorityScore)),
-          metaBadge('SLA', workflow.slaState, SLA_VARIANT[workflow.slaState] ?? 'neutral'),
-          metaItem('SLA due', formatDateTime(workflow.slaDueAt)),
-          metaItem(
-            'Accuracy',
-            workflow.document.accuracyScore === null ? '—' : formatPercent(workflow.document.accuracyScore * 100)
-          ),
-          metaItem('Rule errors', String(workflow.document.validationErrors)),
-          metaItem('Created', relativeTime(workflow.createdAt))
-        ])
-      }),
-      card({
-        title: 'Why this priority',
-        subtitle: 'Every driver that raised or lowered the ranking of this item.',
-        icon: 'target',
-        tone: 'amber',
-        body:
-          (workflow.priorityReasons ?? []).length === 0
-            ? el('p.muted', { text: 'No escalating factors — this item is queued at its baseline priority.' })
-            : el('ul.bullets', {}, workflow.priorityReasons.map((reason) => el('li', { text: reason })))
-      }),
-      card({
-        title: 'Step timeline',
-        subtitle: `${workflow.steps.filter((step) => step.status === 'completed' || step.status === 'skipped').length} of ${workflow.stepCount} step(s) settled.`,
-        icon: 'tasks',
-        tone: 'teal',
-        body: timeline
-      }),
-      closed
-        ? card({
-            title: 'Workflow closed',
-            icon: 'checkCircle',
-            tone: 'jade',
-            body: el('p', {
-              text: `This workflow is ${workflow.status}. Only comments can be added to a closed workflow.`
+      el('div.stack', {}, [
+        card({
+          title: 'Status',
+          icon: 'gauge',
+          tone: 'navy',
+          body: el('div.meta-grid', {}, [
+            metaItem('Workflow status', workflow.status),
+            metaItem('Current step', workflow.currentStepName ?? '—'),
+            metaItem('Assignee', workflow.assignee ?? '—'),
+            metaBadge('Priority', workflow.priority, PRIORITY_VARIANT[workflow.priority] ?? 'neutral'),
+            metaItem('Priority score', String(workflow.priorityScore)),
+            metaBadge('SLA', workflow.slaState, SLA_VARIANT[workflow.slaState] ?? 'neutral'),
+            metaItem('SLA due', formatDateTime(workflow.slaDueAt)),
+            metaItem(
+              'Accuracy',
+              workflow.document.accuracyScore === null ? '—' : formatPercent(workflow.document.accuracyScore * 100)
+            ),
+            metaItem('Rule errors', String(workflow.document.validationErrors)),
+            metaItem('Created', relativeTime(workflow.createdAt))
+          ])
+        }),
+        card({
+          title: 'Why this priority',
+          subtitle: 'Every driver that raised or lowered the ranking of this item.',
+          icon: 'target',
+          tone: 'amber',
+          body:
+            (workflow.priorityReasons ?? []).length === 0
+              ? el('p.muted', { text: 'No escalating factors — this item is queued at its baseline priority.' })
+              : el('ul.bullets', {}, workflow.priorityReasons.map((reason) => el('li', { text: reason })))
+        }),
+        card({
+          title: 'Step timeline',
+          subtitle: `${workflow.steps.filter((step) => step.status === 'completed' || step.status === 'skipped').length} of ${workflow.stepCount} step(s) settled.`,
+          icon: 'tasks',
+          tone: 'teal',
+          body: timeline
+        }),
+        closed
+          ? card({
+              title: 'Workflow closed',
+              icon: 'checkCircle',
+              tone: 'jade',
+              body: el('p', {
+                text: `This workflow is ${workflow.status}. Only comments can be added to a closed workflow.`
+              })
             })
-          })
-        : null,
-      card({
-        title: 'Take action',
-        subtitle: 'Transitions are validated server-side and written to the audit trail.',
-        icon: 'edit',
-        tone: 'violet',
-        body: actionForm
-      }),
-      card({
-        title: 'Audit history',
-        subtitle: 'Every transition, with actor and note.',
-        icon: 'history',
-        tone: 'navy',
-        flush: true,
-        body: dataTable(
-          [{ label: 'When' }, { label: 'Action' }, { label: 'Step' }, { label: 'Actor' }, { label: 'Note' }],
-          (workflow.history ?? [])
-            .slice()
-            .reverse()
-            .map((entry) => [
-              formatDateTime(entry.at),
-              el('span.badge.badge--info', { text: entry.action }),
-              entry.stepName ?? '—',
-              entry.actor,
-              entry.note ?? '—'
-            ]),
-          { emptyMessage: 'No transitions have been recorded yet.', label: 'Workflow transitions' }
-        )
-      })
-      ].filter(Boolean)
+          : null,
+        card({
+          title: 'Take action',
+          subtitle: 'Transitions are validated server-side and written to the audit trail.',
+          icon: 'edit',
+          tone: 'violet',
+          body: actionForm
+        }),
+        card({
+          title: 'Audit history',
+          subtitle: 'Every transition, with actor and note.',
+          icon: 'history',
+          tone: 'navy',
+          flush: true,
+          body: dataTable(
+            [{ label: 'When' }, { label: 'Action' }, { label: 'Step' }, { label: 'Actor' }, { label: 'Note' }],
+            (workflow.history ?? [])
+              .slice()
+              .reverse()
+              .map((entry) => [
+                formatDateTime(entry.at),
+                el('span.badge.badge--info', { text: entry.action }),
+                entry.stepName ?? '—',
+                entry.actor,
+                entry.note ?? '—'
+              ]),
+            { emptyMessage: 'No transitions have been recorded yet.', label: 'Workflow transitions' }
+          )
+        })
+      ].filter(Boolean))
     );
   }
 

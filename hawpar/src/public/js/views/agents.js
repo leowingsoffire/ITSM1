@@ -16,7 +16,7 @@ const ROLE_TONE = Object.freeze({
 
 export async function render() {
   const node = el('div.view');
-  const host = el('div', {}, [loading('Loading the agent mesh…')]);
+  const host = el('div.stack', {}, [loading('Loading the agent mesh…')]);
   node.append(
     pageHeader({
       title: 'Agent Mesh',

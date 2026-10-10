@@ -123,7 +123,7 @@ export async function render(params = {}) {
   });
 
   const filterBar = el('div.filter-bar', {}, [
-    el('div.field', { style: { minWidth: '240px', flex: '1' } }, [
+    el('div.field.field--grow', {}, [
       el('label', { text: 'Search' }),
       searchInput
     ]),

@@ -24,7 +24,7 @@ const STATE_LABEL = Object.freeze({
 
 export async function render() {
   const node = el('div.view');
-  const host = el('div', {}, [loading('Contacting Azure Document Intelligence…')]);
+  const host = el('div.stack', {}, [loading('Contacting Azure Document Intelligence…')]);
 
   node.append(
     pageHeader({

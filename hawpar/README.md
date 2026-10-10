@@ -232,7 +232,7 @@ written to `artifacts/` (git-ignored).
 | --- | --- | --- |
 | `npm run smoke` | Sign-in and rejection, KPIs, session survives reload, every route renders, document detail | Yes (read-only) |
 | `npm run e2e:identity` | Sign-in validation, account menu, members and roles, forced password change, API keys, webhooks with signed deliveries, activity log, sessions, workspace switching, self-signup | The remote subset only (adds and removes one operator, creates and revokes one key) |
-| `npm run e2e` | Signup wizard, account menu, 14 routes, ingest, agent mesh, accuracy and Azure consoles, workflow filtering and transitions, delete with confirmation, accessibility, error states, console/network/CSP hygiene, layouts at 1440, 834 and 390 px | No — ingests, approves and deletes documents |
+| `npm run e2e` | Signup wizard, account menu, 14 routes plus document, workflow and claim detail, ingest, agent mesh, accuracy and Azure consoles, workflow filtering and transitions, delete with confirmation, accessibility, error states, console/network/CSP hygiene, layouts at 1440, 834 and 390 px | No — ingests, approves and deletes documents |
 | `npm run e2e:onboarding` | Sign-in screen → signup wizard → signed-in administrator of the new workspace | Only with `E2E_ALLOW_SIGNUP=1` (creates a workspace) |
 | `npm run e2e:settings`, `e2e:settings-deep`, `e2e:templates` | Settings sections, operator restrictions, template studio | No — create workspaces or members |
 | `npm run legibility`, `npm run design:shots` | 4.5:1 text contrast on every route at three sizes; screenshots of every route | Yes |
@@ -313,6 +313,23 @@ not the nominal token ratio. Subpixel antialiasing costs small text roughly
 Every text run in the application measures **4.5:1 or better after that loss**,
 and `scripts/legibility.mjs` enforces it across 14 routes × 3 breakpoints
 (about 1,500 text runs, depending on the data) — `npm run legibility`. The same check runs inside `npm run e2e`.
+
+Layout composition follows four rules, and the `npm run e2e` layout sweep fails if any is broken at
+1440, 834 or 390 px:
+
+- **No overlap.** Grid and flex children never draw over each other. A filter field that needs extra
+  room uses `.field--grow`, which spans two columns of the filter bar, rather than an inline
+  `min-width` that would overflow its track and slide under the next control.
+- **No orphaned card.** KPI rows balance by card count — six cards sit 6, 3 + 3 or one per row; five
+  sit 5, 3 + 2 or one per row; four sit 4, 2 + 2 or one per row — and `.grid--3` stops at three
+  columns, so a multi-column row never ends with a single card.
+- **A consistent rhythm.** A host that renders several sections uses `.stack` (a 16 px gap), so cards
+  and KPI rows never touch.
+- **No clipped table.** A table that does not fit lets its headers wrap, and if it still does not fit
+  `dataTable` turns it into label/value rows, so record and analytics tables never scroll sideways.
+  List views stack only on phones, keeping scannable columns on tablets and laptops; there, and in
+  extracted tables that mirror the source document, a table wider than its card scrolls inside a
+  labelled, focusable region with an edge shadow.
 
 Motion is functional only: state transitions and feedback, no ambient
 animation, parallax or custom cursor. All styling is applied through CSSOM

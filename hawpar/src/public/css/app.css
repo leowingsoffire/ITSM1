@@ -378,9 +378,34 @@ button { font-family: inherit; font-size: inherit; }
 .card__body--flush { padding: 0; }
 
 .grid { display: grid; gap: 12px; }
-.grid--kpi { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+/*
+ * KPI rows stay balanced. The cards share one row while they all fit; when
+ * they no longer do, a set of four drops straight to two per row and a set of
+ * five or six to three, so a lone card never trails on a row of its own.
+ * Below the one-row width (n cards plus gaps) each track's minimum becomes 1/k
+ * of the row, which caps the grid at k columns; the "× 999" term switches that
+ * cap off once the whole set fits. It measures the grid itself, not the
+ * viewport, so it holds whatever the sidebar is doing. Other set sizes, and
+ * the defaults (n 0, k 1), reflow as a plain auto-fit grid.
+ */
+.grid--kpi {
+  --kpi-min: 190px;
+  --kpi-n: 0;
+  --kpi-k: 1;
+  grid-template-columns: repeat(auto-fit, minmax(max(
+    var(--kpi-min),
+    min(
+      (100% - (var(--kpi-k) - 1) * 12px) / var(--kpi-k),
+      (var(--kpi-n) * var(--kpi-min) + (var(--kpi-n) - 1) * 12px - 100%) * 999
+    )
+  ), 1fr));
+}
+.grid--kpi:has(> :nth-child(4):last-child) { --kpi-n: 4; --kpi-k: 2; }
+.grid--kpi:has(> :nth-child(5):last-child) { --kpi-n: 5; --kpi-k: 3; }
+.grid--kpi:has(> :nth-child(6):last-child) { --kpi-n: 6; --kpi-k: 3; }
 .grid--2 { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
-.grid--3 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+/* At most three across: a fourth column strands the last of a set of nine. */
+.grid--3 { grid-template-columns: repeat(auto-fit, minmax(max(260px, (100% - 24px) / 3), 1fr)); }
 
 /* ---------- KPI ---------- */
 .kpi {
@@ -462,6 +487,14 @@ input[type="range"] { width: 100%; accent-color: var(--accent); padding: 0; }
 .filter-bar .field { min-width: 0; }
 .filter-bar .btn { justify-self: start; }
 /*
+ * The search box takes two columns wherever the bar has two to give, so its
+ * hint fits. A fixed minimum width would instead push it out of its own
+ * column and underneath the next control.
+ */
+@media (min-width: 560px) {
+  .filter-bar .field--grow { grid-column: span 2; }
+}
+/*
  * A 13px native checkbox is a poor pointer target on a phone and inherits no
  * theme colour. The wrapping label is the real target (clicking the text
  * toggles), so the label carries the WCAG 2.5.8 minimum height while the box
@@ -509,6 +542,8 @@ table.data th {
   border-bottom: 1px solid var(--border-strong); position: sticky; top: 0; z-index: 1;
 }
 table.data td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+/* A `'fit'` table that misses by a little lets its headers wrap before it stacks (see `dataTable`). */
+.table-wrap.is-compact table.data th { white-space: normal; }
 table.data tbody tr:last-child td { border-bottom: 0; }
 table.data tbody tr { transition: background var(--dur-fast) var(--ease-out); }
 table.data tbody tr:hover { background: var(--accent-soft); }
@@ -542,7 +577,7 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
   clip-path: inset(50%); white-space: nowrap;
 }
 .table-wrap.is-stacked table.data tbody tr {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); column-gap: 28px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); column-gap: 28px;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
 .table-wrap.is-stacked table.data tbody tr:last-child { border-bottom: 0; }
@@ -550,11 +585,13 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
   display: grid; grid-template-columns: minmax(84px, 40%) minmax(0, 1fr);
   align-items: center; gap: 12px;
   padding: 5px 0; border-bottom: 0; text-align: left;
+  /* A long unbroken value (an ID, a hash, a file name) wraps inside its column instead of widening the row past the card. */
+  overflow-wrap: anywhere;
 }
 .table-wrap.is-stacked table.data td::before {
   content: attr(data-label);
   color: var(--text-secondary); font-size: 11px; font-weight: 650;
-  text-transform: uppercase; letter-spacing: 0.5px;
+  text-transform: uppercase; letter-spacing: 0.5px; overflow-wrap: normal;
 }
 /* The first cell names the row, so it leads the block without a label. */
 .table-wrap.is-stacked table.data td:first-child { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); padding: 0 0 6px; }
@@ -562,7 +599,14 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 .table-wrap.is-stacked table.data td:empty { display: none; }
 /* Values keep their natural width: a badge stays a pill instead of filling its column. */
 .table-wrap.is-stacked table.data td > * { justify-self: start; max-width: 100%; }
-.table-wrap.is-stacked table.data td > select { justify-self: start; width: 100%; max-width: 320px; }
+/* An inline control fills its value column, however narrow the card, instead of keeping its table-row minimum. */
+.table-wrap.is-stacked table.data td > select { justify-self: start; width: 100%; max-width: 320px; min-width: 0; }
+/*
+ * A status pill longer than a narrow value column ("Awaiting new password" on
+ * a phone) wraps its words instead of pushing the row past the card. The
+ * fixed radius still draws a pill on one line and rounds a two-line box.
+ */
+.table-wrap.is-stacked table.data td :is(.badge, .chip) { white-space: normal; border-radius: 13px; max-width: 100%; }
 
 /* ---------- Badges ---------- */
 .badge {
@@ -677,7 +721,12 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 .viewer { position: static; }
 @media (min-width: 1181px) { .viewer { position: sticky; top: 0; } }
 .viewer__toolbar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--slate-200); flex-wrap: wrap; }
-.viewer__page-input { width: 62px; text-align: center; }
+/* Scoped under the toolbar so it outranks the global input[type="number"]
+   width: 100% rule — otherwise the pager input fills the whole toolbar row. */
+.viewer__toolbar .viewer__page-input { width: 62px; flex: none; text-align: center; }
+/* The page total belongs to the pager, not to muted metadata — and a run of
+   thin glyphs such as "/ 1" renders well below its nominal contrast. */
+.viewer__page-total { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .viewer__canvas {
   background: var(--slate-100); padding: 16px; display: flex; justify-content: center;
   max-height: calc(100vh - 210px); overflow: auto;
@@ -1023,7 +1072,12 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
 .text-right { text-align: right; }
 .mono { font-family: var(--mono); }
 .nowrap { white-space: nowrap; }
-.stack { display: grid; gap: 16px; }
+/* Vertical rhythm for hosts that render several sections (KPI row, cards).
+   minmax(0, 1fr) keeps wide tables scrolling inside their card instead of
+   widening the column; an empty placeholder (e.g. an unselected detail
+   panel) is removed so it never doubles the gap. */
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.stack > div:empty { display: none; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .scroll-box { max-height: 420px; overflow-y: auto; }
 
@@ -1113,7 +1167,7 @@ table.data .mono { font-family: var(--mono); font-size: 12px; }
   .pill--queue { display: none; }
   .page-header { gap: 12px; }
   .page-header__actions { margin-left: 0; width: 100%; }
-  .grid--kpi { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .grid--kpi { --kpi-min: 150px; }
   .kpi__value { font-size: 22px; }
   /* Collapse every multi-column grid so nothing exceeds a phone viewport. */
   .grid--2, .grid--3, .sample-grid, .skeleton-grid { grid-template-columns: 1fr; }

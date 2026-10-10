@@ -311,13 +311,15 @@ async function sample(page, minFontSize, shot) {
  *
  * Sampling rendered pixels under-reports thin anti-aliased glyphs — no pixel of
  * 10px text ever reaches its declared colour — so a measured ratio runs roughly
- * 0.7–1.1 below the nominal one. That makes this a *stricter* gate than a
- * token-level WCAG calculation, not a looser one.
+ * 0.7–1.1 below the nominal one, and up to ~2 for a run made only of thin
+ * strokes such as "/ 1". That makes this a *stricter* gate than a token-level
+ * WCAG calculation, not a looser one.
  *
  * The default is therefore the WCAG AA floor of 4.5:1 applied to the measured
  * value: every ink tier in the palette is chosen so its small text still clears
- * 4.5:1 after antialiasing loss. The whole app currently measures 5.2:1 or
- * better, so there is ~0.7 of headroom before this reports a false alarm.
+ * 4.5:1 after antialiasing loss. Most text measures 5.2:1 or better; the
+ * tightest runs are white on the success button (4.6:1, equal to its nominal
+ * ratio, so a report there is never a false alarm) and the viewer's page total.
  */
 export async function findLowContrastText(page, options = {}) {
   const { threshold = 4.5, ...rest } = options;
