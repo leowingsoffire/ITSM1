@@ -1,6 +1,7 @@
 /**
  * Workspace administration: members, API keys, webhooks, the activity log and
- * the extraction learning memory.
+ * the extraction learning memory, plus the workspace lifecycle (archive and
+ * restore) for platform administrators.
  *
  * Administrators only. The server enforces every rule (roles, last-admin
  * protection, one-time secrets); this view presents them, and a credential is
@@ -9,7 +10,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { isAdmin } from '../role.js';
-import { currentUser, currentWorkspace, initialsFor } from '../session.js';
+import { currentUser, currentWorkspace, initialsFor, loadSession } from '../session.js';
 import { state } from '../store.js';
 import { debounce, el, formatDateTime, formatNumber, relativeTime, toast } from '../util.js';
 import { card, confirmDialog, dataTable, emptyState, kpi, loading, modalDialog, pageHeader, revealSecretDialog, tabGroup } from './common.js';
@@ -792,6 +793,154 @@ function learningPanel() {
   return panel;
 }
 
+/* ── Workspaces (platform administrators) ────────────────────────────────── */
+
+const WORKSPACE_FILTERS = Object.freeze([
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
+  { value: '', label: 'All workspaces' }
+]);
+
+const plural = (count, one, many = `${one}s`) => `${formatNumber(count)} ${count === 1 ? one : many}`;
+
+function workspacesPanel() {
+  const status = el('select', { id: 'workspace-status' }, WORKSPACE_FILTERS.map((option) => el('option', { value: option.value, text: option.label })));
+  const search = el('input', { type: 'search', autocomplete: 'off', placeholder: 'Name, contact or ID', id: 'workspace-search' });
+  const summary = el('p.admin-panel__summary', { role: 'status' });
+  const tableHost = el('div.admin-panel__body', {}, [loading()]);
+  let items = [];
+  let current = null;
+
+  function paint() {
+    const term = search.value.trim().toLowerCase();
+    const visible = items.filter(
+      (item) =>
+        (!status.value || item.status === status.value) &&
+        (!term || [item.name, item.id, item.contactName, item.contactEmail, item.businessType].some((value) => value?.toLowerCase().includes(term)))
+    );
+    const archived = items.filter((item) => item.status === 'archived').length;
+    summary.textContent = `${formatNumber(items.length - archived)} active · ${formatNumber(archived)} archived${
+      visible.length === items.length ? '' : ` · showing ${formatNumber(visible.length)}`
+    }`;
+    tableHost.replaceChildren(
+      dataTable(
+        [{ label: 'Workspace' }, { label: 'Contact' }, { label: 'Members', numeric: true }, { label: 'Created' }, { label: 'Status' }, { label: 'Actions' }],
+        visible.map((item) => workspaceRow(item, { isCurrent: item.id === current, refresh: load })),
+        {
+          stack: true,
+          label: 'Workspaces',
+          emptyMessage: term || status.value ? 'No workspaces match these filters.' : 'No client workspaces yet. They appear here once created.'
+        }
+      )
+    );
+  }
+
+  async function load() {
+    try {
+      const response = await api.listWorkspaces();
+      items = response.items;
+      current = response.current;
+      paint();
+    } catch (error) {
+      tableHost.replaceChildren(
+        emptyState('Workspaces could not be loaded', error?.message ?? 'Please try again.', button('Retry', { iconName: 'refresh', onClick: load }), 'alert')
+      );
+    }
+  }
+
+  status.addEventListener('change', paint);
+  search.addEventListener('input', debounce(paint, 150));
+  load();
+  return el('section.admin-panel', {}, [
+    panelHead({
+      title: 'Workspaces',
+      description:
+        'Every client workspace on this deployment. Archiving closes a workspace: its members can no longer open it and its API keys stop working, while its documents, settings and activity log are kept until you restore it.'
+    }),
+    el('div.filter-bar.admin-filters', {}, [formField('Status', status), formField('Search', search)]),
+    summary,
+    tableHost
+  ]);
+}
+
+function workspaceRow(item, { isCurrent, refresh }) {
+  const archived = item.status === 'archived';
+  const name = el('div.admin-stack', {}, [
+    el('strong', { text: `${item.name}${isCurrent ? ' (current)' : ''}` }),
+    el('span.muted', { text: item.businessType ? `${item.businessType} · ${item.id}` : item.id })
+  ]);
+  const contact = item.contactName || item.contactEmail
+    ? el('div.admin-stack', {}, [
+        item.contactName ? el('span', { text: item.contactName }) : null,
+        item.contactEmail ? el('span.muted', { text: item.contactEmail }) : null
+      ])
+    : '—';
+  const members = el('span', { text: formatNumber(item.members), title: plural(item.administrators, 'administrator') });
+  const created = item.createdAt ? el('span', { text: formatDateTime(item.createdAt), title: relativeTime(item.createdAt) }) : '—';
+  const badge = archived
+    ? el('span.badge.badge--neutral', {
+        text: 'Archived',
+        title: `Archived ${formatDateTime(item.archivedAt)}${item.archivedBy ? ` by ${item.archivedBy}` : ''}`
+      })
+    : el('span.badge.badge--success', { text: 'Active' });
+  return [name, contact, members, created, badge, archived ? restoreWorkspaceButton(item, refresh) : archiveWorkspaceButton(item, { isCurrent, refresh })];
+}
+
+/** The account menu lists workspaces from the session, so reload it after a change. */
+async function refreshWorkspaceChoices() {
+  try {
+    await loadSession();
+  } catch {
+    /* the next page load refreshes it */
+  }
+}
+
+function archiveWorkspaceButton(item, { isCurrent, refresh }) {
+  const archive = button('Archive', { iconName: 'archive', small: true, id: `archive-${item.id}` });
+  archive.setAttribute('aria-label', `Archive ${item.name}`);
+  if (isCurrent) {
+    archive.disabled = true;
+    archive.title = 'You are working in this workspace. Switch to another workspace to archive it.';
+    return archive;
+  }
+  archive.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: `Archive ${item.name}?`,
+      message: `Its ${plural(item.members, 'member')} can no longer open it: anyone working in it moves to another workspace they belong to or is signed out, and its API keys stop working. Documents, settings and the activity log are kept, and you can restore it at any time.`,
+      confirmLabel: 'Archive workspace'
+    });
+    if (!ok) return;
+    const result = await busy(archive, () => api.archiveWorkspace(item.id));
+    if (!result) return;
+    const { moved, ended } = result.sessions;
+    const sessions = moved + ended === 0 ? '' : ` ${plural(moved, 'session')} moved to another workspace, ${formatNumber(ended)} signed out.`;
+    toast(`${item.name} was archived.${sessions}`, 'success');
+    await refreshWorkspaceChoices();
+    refresh();
+  });
+  return archive;
+}
+
+function restoreWorkspaceButton(item, refresh) {
+  const restore = button('Restore', { iconName: 'restore', small: true, id: `restore-${item.id}` });
+  restore.setAttribute('aria-label', `Restore ${item.name}`);
+  restore.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: `Restore ${item.name}?`,
+      message: 'Its members can open it again and its API keys start working again, with every document and setting as it was.',
+      confirmLabel: 'Restore workspace',
+      tone: 'default'
+    });
+    if (!ok) return;
+    const result = await busy(restore, () => api.restoreWorkspace(item.id));
+    if (!result) return;
+    toast(`${item.name} was restored.`, 'success');
+    await refreshWorkspaceChoices();
+    refresh();
+  });
+  return restore;
+}
+
 /* ── View ────────────────────────────────────────────────────────────────── */
 
 const PANELS = Object.freeze([
@@ -799,7 +948,8 @@ const PANELS = Object.freeze([
   { id: 'api-keys', label: 'API keys', render: apiKeysPanel },
   { id: 'webhooks', label: 'Webhooks', render: webhooksPanel },
   { id: 'activity', label: 'Activity log', render: activityPanel },
-  { id: 'learning', label: 'Learning memory', render: learningPanel }
+  { id: 'learning', label: 'Learning memory', render: learningPanel },
+  { id: 'workspaces', label: 'Workspaces', render: workspacesPanel, platformOnly: true }
 ]);
 
 export async function render(params = {}) {
@@ -816,7 +966,8 @@ export async function render(params = {}) {
     return { node };
   }
 
-  const tabs = tabGroup(PANELS, {
+  const panels = PANELS.filter((panel) => !panel.platformOnly || currentUser()?.platformAdmin);
+  const tabs = tabGroup(panels, {
     label: 'Administration sections',
     idPrefix: 'admin-tab',
     initial: params.tab,

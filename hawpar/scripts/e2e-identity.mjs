@@ -7,8 +7,10 @@
  * die on revocation; webhooks deliver HMAC-signed events (a test event and a
  * real pipeline event) to a receiver; the activity log filters and exports;
  * signed-in devices and password changes; workspace creation and switching;
- * self-service signup; sign-out. Layout is checked at desktop, tablet and
- * mobile sizes, and every page must finish without console or network errors.
+ * self-service signup; a platform administrator archives a workspace (its
+ * owner is signed out, a tab working in it moves on) and restores it; sign-out.
+ * Layout is checked at desktop, tablet and mobile sizes, and every page must
+ * finish without console or network errors.
  *
  * Run: node scripts/e2e-identity.mjs
  *   E2E_BASE                                server under test (default http://127.0.0.1:8080)
@@ -122,6 +124,18 @@ async function go(page, hash, readySelector) {
     location.hash = target;
   }, hash);
   if (readySelector) await page.waitForSelector(readySelector, { timeout: 15000 });
+}
+
+/**
+ * Runs an action that reloads the page and waits for the new document. The app
+ * often sets the hash before reloading, which a navigation wait can mistake for
+ * the reload itself.
+ */
+async function reloadAfter(page, action) {
+  const loaded = page.waitForEvent('load', { timeout: 20000 });
+  await action();
+  await loaded;
+  await waitForShell(page);
 }
 
 async function openMenu(page) {
@@ -609,6 +623,78 @@ try {
     await rowFor(vp, ownerEmail).first().waitFor({ timeout: 10000 });
     ok('the owner is listed as the workspace administrator', /\(you\)/.test(await rowFor(vp, ownerEmail).first().innerText()));
     await layoutCheck(visitor, 'admin-members');
+
+    /* ── 13b. A platform administrator archives and restores it ───────────── */
+    const signupId = await vp.evaluate(() => sessionStorage.getItem('vgc.tab-workspace'));
+    // While archived, the owner's session ends and their sign-in is refused.
+    visitor.expect(/40[13] (GET|POST) .*\/api\//);
+    visitor.expect(/status of 40[13]/);
+
+    // A second administrator tab, on a phone, working in that workspace.
+    const phone = await openSession('archived-tab', VIEWPORTS.mobile);
+    const pp = phone.page;
+    phone.expect(/403 (GET|POST) .*\/api\//);
+    phone.expect(/status of 403/);
+    phone.expect(/EventSource/i);
+    await pp.goto(BASE, { waitUntil: 'load' });
+    await signInThroughUi(pp, ADMIN);
+    await waitForShell(pp);
+    await openMenu(pp);
+    await reloadAfter(pp, () => pp.click(`#switch-${signupId}`));
+    await go(pp, '#/admin/workspaces', `#archive-${signupId}`);
+    ok('the workspace a tab is working in cannot be archived from that tab', await pp.isDisabled(`#archive-${signupId}`));
+    await layoutCheck(phone, 'admin-workspaces');
+
+    await go(page, '#/admin/workspaces', '#workspace-search');
+    await rowFor(page, companyName).first().waitFor({ timeout: 10000 });
+    await layoutCheck(admin, 'admin-workspaces');
+    await page.fill('#workspace-search', companyName);
+    await page.waitForFunction(() => document.querySelectorAll('#view-root tbody tr').length === 1, null, { timeout: 5000 }).catch(() => {});
+    ok('workspaces can be searched', (await page.locator('#view-root tbody tr').count()) === 1 && (await rowFor(page, companyName).count()) === 1);
+    await page.click(`#archive-${signupId}`);
+    const archiveQuestion = await page.waitForSelector('dialog.confirm-dialog[open]').then((node) => node.innerText());
+    ok('archiving explains what happens to members, keys and data', /API keys stop working/.test(archiveQuestion) && /restore/i.test(archiveQuestion), archiveQuestion.replace(/\s+/g, ' ').slice(0, 160));
+    await confirm(page);
+    const archivedToast = await page.locator('#toast-stack .toast', { hasText: 'was archived' }).first().innerText({ timeout: 10000 }).catch(() => '');
+    ok('archiving reports the sessions it moved and ended', /1 session moved to another workspace, 1 signed out/.test(archivedToast), archivedToast);
+    await page.waitForFunction((name) => ![...document.querySelectorAll('#view-root tbody tr')].some((row) => row.innerText.includes(name)), companyName, { timeout: 10000 }).catch(() => {});
+    ok('an archived workspace leaves the active list', (await rowFor(page, companyName).count()) === 0);
+    await page.selectOption('#workspace-status', 'archived');
+    await page.waitForSelector(`#restore-${signupId}`, { timeout: 10000 });
+    ok('the archived list shows it with a restore action', /Archived/.test(await rowFor(page, companyName).first().innerText()));
+    ok('the account menu no longer offers the archived workspace', !(await menuText(page)).includes(companyName));
+
+    await go(pp, '#/documents');
+    await pp.waitForSelector(`${openDialog} #workspace-archived-continue`, { timeout: 15000 });
+    ok('a tab working in the archived workspace is told so', /has been archived/.test(await pp.textContent(openDialog)));
+    ok('the failures that follow are not also reported as errors', (await pp.locator('#toast-stack .toast--error').count()) === 0);
+    await layoutCheck(phone, 'workspace-archived');
+    await reloadAfter(pp, () => pp.click('#workspace-archived-continue'));
+    const movedMenu = await menuText(pp);
+    ok('that tab continues in another workspace', !movedMenu.includes(companyName) && /Workspace/i.test(movedMenu), movedMenu.replace(/\s+/g, ' ').slice(0, 240));
+    await openMenu(pp);
+    await reloadAfter(pp, () => pp.locator('.account-menu [id^="switch-"]', { hasText: 'Shared workspace' }).click());
+    ok('from there it switches workspaces as usual', /Workspace\s*Shared workspace/i.test(await menuText(pp)));
+
+    await go(vp, '#/documents');
+    await vp.waitForSelector('#auth-email', { state: 'visible', timeout: 20000 });
+    ok("the owner's session ends when their only workspace is archived", true);
+    await signInThroughUi(vp, { email: ownerEmail, password: ownerPassword });
+    const refused = await vp
+      .waitForFunction(() => document.querySelector('.auth__error')?.textContent ?? '', null, { timeout: 10000 })
+      .then((handle) => handle.jsonValue())
+      .catch(() => '');
+    ok('sign-in explains that no active workspace is left', /any active workspace/.test(refused), refused);
+
+    await page.click(`#restore-${signupId}`);
+    await confirm(page);
+    const restoredToast = await page.locator('#toast-stack .toast', { hasText: 'was restored' }).first().innerText({ timeout: 10000 }).catch(() => '');
+    ok('restoring is confirmed', restoredToast.includes(companyName), restoredToast);
+    await page.selectOption('#workspace-status', 'active');
+    await rowFor(page, companyName).first().waitFor({ timeout: 10000 });
+    ok('the restored workspace is active again', /Active/.test(await rowFor(page, companyName).first().innerText()));
+    await reloadAfter(vp, () => signInThroughUi(vp, { email: ownerEmail, password: ownerPassword }));
+    ok('the owner can sign in to the restored workspace', (await menuText(vp)).includes(companyName));
   }
 
   /* ── 14. Sign out ────────────────────────────────────────────────────────── */

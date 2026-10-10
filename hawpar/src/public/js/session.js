@@ -12,14 +12,15 @@ let current = null;
 /**
  * Loads the session and picks the tab's workspace: the one this tab used
  * before a reload when the user can still open it, otherwise the session's.
+ * Never one missing from the list (archived, or access removed).
  * @returns {Promise<object>} the session view
  */
 export async function loadSession() {
   current = await api.session();
   if (current.authenticated) {
-    const remembered = rememberedTenantId();
     const available = new Set(current.workspaces.map((workspace) => workspace.id));
-    setTenantId(remembered && available.has(remembered) ? remembered : current.workspace.id);
+    const choice = [rememberedTenantId(), current.workspace?.id].find((id) => id && available.has(id));
+    setTenantId(choice ?? current.workspaces[0]?.id ?? current.workspace.id);
   } else {
     setTenantId(null);
   }

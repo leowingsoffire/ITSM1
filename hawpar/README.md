@@ -214,7 +214,7 @@ Azure spend**. Go to **Ingest Documents → Run selected samples** to populate t
 own PDFs onto the drop zone.
 
 ```powershell
-npm test     # 243 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
+npm test     # 251 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
 npm run e2e  # browser checks: full journeys, validation, a11y and desktop/tablet/mobile layouts
 ```
 
@@ -454,6 +454,13 @@ Every request is attributable to a real person or a named integration — there 
 - **Signup policy.** By default anyone can create a new workspace from the sign-in screen and becomes its
   administrator. `SELF_SIGNUP=false` makes the deployment **invitation-only**: only platform administrators
   create workspaces, and everyone else is added by an administrator.
+- **Workspace lifecycle.** Platform administrators see every client workspace, with its contact and
+  member count, under *Administration → Workspaces*, and can **archive** one. Once archived, nobody can
+  open it, platform administrators included, and its API keys stop working. Anyone signed in to it moves
+  to another workspace they belong to, or is signed out if they have none. Its documents, settings and
+  activity log stay untouched. **Restoring** it brings everything back as it was. Both actions are recorded
+  in that workspace's own activity log. The shared workspace cannot be archived, and neither can the one
+  you are working in.
 - **API keys** (*Administration → API keys*) connect back-office systems without a user session. Send the
   key as `x-api-key`; it acts only in its own workspace and with the role chosen when it was created.
   Keys look like `vgc_<id>_<secret>`, are shown exactly once and stored only as SHA-256 hashes, and can be
@@ -461,7 +468,7 @@ Every request is attributable to a real person or a named integration — there 
 - **Webhooks** (*Administration → Webhooks*) push `document.processed`, `document.review_required`,
   `document.failed`, `document.approved`, `document.rejected` and `document.deleted` to your systems. Each
   delivery is signed (`x-vgc-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`) and
-  retried up to four times (immediately, then after about 5 s, 30 s and 2 min); every attempt is kept in
+  attempted up to four times (immediately, then retried after about 5 s, 30 s and 2 min); every attempt is kept in
   the delivery log. Destinations must resolve to public addresses — private, loopback and link-local
   targets are refused, checked at connection time so DNS rebinding cannot bypass it. Retries are
   in-process: a restart abandons in-flight retries.
@@ -585,7 +592,9 @@ imply Microsoft endorsement. Full detail in
 | `POST` | `/api/admin/webhooks/:id/rotate-secret` · `/test` | Rotate the signing secret · send a signed test event |
 | `GET` | `/api/admin/webhooks/:id/deliveries` | Delivery log with every attempt |
 | `GET` | `/api/admin/activity` | Workspace activity log (`limit`, `before`, `action`, `actor`, `q`) |
-| `GET` · `DELETE` | `/api/admin/learning/memory` | Correction-learning statistics · clear the learned corrections |
+| `GET` · `DELETE` | `/api/learning/memory` | Correction-learning statistics · clear the learned corrections |
+| `GET` | `/api/admin/workspaces` | Every client workspace with its status and member counts (platform administrators) |
+| `POST` | `/api/admin/workspaces/:id/archive` · `/restore` | Archive a workspace (its sessions move on or end) · restore it (platform administrators) |
 | `POST` | `/api/documents` | Multi-file upload |
 | `GET` | `/api/documents` | Filtered, paginated listing |
 | `GET` | `/api/documents/:id` | Full record without page payloads |

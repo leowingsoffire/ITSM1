@@ -10,7 +10,7 @@ import { isAdmin } from './role.js';
 import { authOptions, availableWorkspaces, currentUser, currentWorkspace, initialsFor, loadSession } from './session.js';
 import { forgetLegacyIdentity, setTenantId, withTenant } from './tenant.js';
 import { connectEventStream, loadConfig, refreshCounters, state, subscribe } from './store.js';
-import { clear, debounce, el, formatDateTime, formatNumber, relativeTime, toast } from './util.js';
+import { clear, debounce, el, formatDateTime, formatNumber, muteErrorToasts, relativeTime, toast } from './util.js';
 import { confirmDialog, modalDialog } from './views/common.js';
 
 const ROUTES = Object.freeze({
@@ -526,13 +526,34 @@ function wireSessionInterrupts() {
   window.addEventListener('vgc:session-expired', async () => {
     if (interrupted || signingOut) return;
     interrupted = true;
+    muteErrorToasts();
     await presentSignIn({ options: authOptions(), message: 'Your session has ended. Sign in again to continue.' });
     location.reload();
   });
   window.addEventListener('vgc:password-change-required', async () => {
     if (interrupted) return;
     interrupted = true;
+    muteErrorToasts();
     await presentPasswordChange({ forced: true, minLength: authOptions().passwordMinLength, email: currentUser()?.email });
+    location.reload();
+  });
+  // A platform administrator archived the workspace this tab is working in.
+  window.addEventListener('vgc:workspace-archived', async () => {
+    if (interrupted || signingOut) return;
+    interrupted = true;
+    muteErrorToasts();
+    const proceed = el('button.btn.btn--primary', { type: 'button', id: 'workspace-archived-continue' }, [el('span', { text: 'Continue' })]);
+    const modal = modalDialog({
+      title: 'This workspace has been archived',
+      subtitle: `${currentWorkspace()?.name ?? 'The workspace'} was closed by a platform administrator. Its documents are kept and it can be restored.`,
+      content: [el('p', { text: 'Continue to another workspace you belong to. If there is none, you will be asked to sign in again.' })],
+      footer: [proceed],
+      dismissible: false
+    });
+    proceed.addEventListener('click', () => modal.close());
+    await modal.closed;
+    setTenantId(null);
+    location.hash = '#/dashboard';
     location.reload();
   });
 }

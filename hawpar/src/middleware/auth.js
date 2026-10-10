@@ -197,3 +197,9 @@ export function requireInteractiveAdmin(request, response, next) {
   }
   return requireAdmin(request, response, next);
 }
+
+/** Platform-wide operations (the workspace lifecycle) need a signed-in platform administrator. */
+export function requirePlatformAdmin(request, response, next) {
+  if (request.principal?.type === 'user' && request.principal.platformAdmin) return next();
+  return next(forbidden('Only platform administrators can do this.'));
+}

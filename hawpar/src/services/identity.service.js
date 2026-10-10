@@ -17,7 +17,7 @@ import { AppError, ErrorCode, badRequest, conflict, forbidden, notFound, unautho
 import { displayIp } from '../lib/format.js';
 import { logger } from '../lib/logger.js';
 import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
-import { getTenant, listTenants, tenantExists } from './tenant.service.js';
+import { getTenant, listTenants, tenantIsActive } from './tenant.service.js';
 import { identity, loadIdentity, persistIdentity } from './identity.store.js';
 
 const scryptAsync = promisify(scrypt);
@@ -144,11 +144,11 @@ function newUser({ email, name, passwordHash, platformAdmin = false, mustChangeP
   };
 }
 
-/** @returns {'admin'|'user'|null} the user's role in the workspace, or null without access. */
+/** @returns {'admin'|'user'|null} the user's role in the workspace, or null without access (archived workspaces grant none). */
 export function roleIn(user, tenantId) {
   if (!user || user.status !== 'active') return null;
   const id = tenantId || DEFAULT_TENANT_ID;
-  if (!tenantExists(id)) return null;
+  if (!tenantIsActive(id)) return null;
   const membership = user.memberships?.find((entry) => entry.tenantId === id);
   if (membership) return membership.role;
   return user.platformAdmin ? Role.ADMIN : null;
@@ -171,7 +171,7 @@ export function workspacesFor(user) {
     for (const tenant of listTenants()) ids.add(tenant.id);
   }
   return [...ids]
-    .filter((id) => tenantExists(id))
+    .filter((id) => tenantIsActive(id))
     .map((id) => ({ id, name: workspaceName(id), role: roleIn(user, id) }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -179,7 +179,7 @@ export function workspacesFor(user) {
 function pickWorkspace(user, preferred) {
   if (preferred && roleIn(user, preferred)) return preferred;
   if (user.lastTenantId && roleIn(user, user.lastTenantId)) return user.lastTenantId;
-  return workspacesFor(user)[0]?.id ?? null;
+  return workspacesFor(user).find((workspace) => workspace.role)?.id ?? null;
 }
 
 export function publicUser(user) {
@@ -315,7 +315,7 @@ export async function login({ email, password, tenantId }, meta = {}) {
 
   const workspace = pickWorkspace(user, tenantId);
   if (!workspace) {
-    throw forbidden('Your account is not a member of any workspace yet. Ask a workspace administrator to add you.');
+    throw forbidden('Your account is not a member of any active workspace. Ask a workspace administrator to add you.');
   }
   user.failedLoginCount = 0;
   user.lockedUntil = null;
@@ -350,6 +350,24 @@ export async function createSession(user, tenantId, { ip, userAgent } = {}) {
   return { token, session, user };
 }
 
+/**
+ * Keeps a session in a workspace its user can open. When that workspace was
+ * archived or the person lost access to it, the session moves to another of
+ * their workspaces, or ends when none is left. Changes memory only; the caller
+ * persists.
+ * @returns {'kept'|'moved'|'ended'}
+ */
+function settleSessionWorkspace(session, user) {
+  if (user && roleIn(user, session.tenantId)) return 'kept';
+  const next = user ? pickWorkspace(user) : null;
+  if (next) {
+    session.tenantId = next;
+    return 'moved';
+  }
+  identity.sessions.delete(session.id);
+  return 'ended';
+}
+
 /** @returns {{session: object, user: object}|null} the live session for a cookie token. */
 export function resolveSession(token) {
   if (typeof token !== 'string' || token.length < 20 || token.length > 200) return null;
@@ -362,6 +380,16 @@ export function resolveSession(token) {
   }
   const user = identity.users.get(session.userId);
   if (!user || user.status !== 'active') return null;
+  // Archiving a workspace settles its sessions straight away. This catches any
+  // left behind (say the process stopped between the two writes), so a session
+  // never stays stuck in a workspace its user can no longer open.
+  const from = session.tenantId;
+  const settled = settleSessionWorkspace(session, user);
+  if (settled !== 'kept') {
+    logger.warn('A session was left in a workspace its user can no longer open.', { userId: user.id, from, outcome: settled });
+    persistIdentity('sessions');
+    if (settled === 'ended') return null;
+  }
   if (Date.now() - Date.parse(session.lastSeenAt) > SESSION_TOUCH_INTERVAL_MS) {
     session.lastSeenAt = nowIso();
     persistIdentity('sessions');
@@ -384,6 +412,38 @@ function revokeWhere(predicate) {
   }
   if (removed > 0) persistIdentity('sessions');
   return removed;
+}
+
+/**
+ * After a workspace is archived, moves every session that was working in it
+ * to another workspace its user can still open, and ends the sessions of
+ * people who have nowhere else to go.
+ * @returns {Promise<{moved: number, ended: number}>}
+ */
+export async function rehomeWorkspaceSessions(tenantId) {
+  const tally = { moved: 0, ended: 0 };
+  for (const session of [...identity.sessions.values()]) {
+    if (session.tenantId !== tenantId) continue;
+    const outcome = settleSessionWorkspace(session, identity.users.get(session.userId));
+    if (outcome !== 'kept') tally[outcome] += 1;
+  }
+  if (tally.moved + tally.ended > 0) await persistIdentity('sessions');
+  return tally;
+}
+
+/** @returns {Map<string, {members: number, administrators: number}>} active accounts per workspace. */
+export function workspaceMemberCounts() {
+  const counts = new Map();
+  for (const user of identity.users.values()) {
+    if (user.status !== 'active') continue;
+    for (const membership of user.memberships ?? []) {
+      const tally = counts.get(membership.tenantId) ?? { members: 0, administrators: 0 };
+      tally.members += 1;
+      if (membership.role === Role.ADMIN) tally.administrators += 1;
+      counts.set(membership.tenantId, tally);
+    }
+  }
+  return counts;
 }
 
 export function listUserSessions(user, currentSessionId) {
@@ -681,7 +741,7 @@ export function resolveApiKey(presented) {
   const match = API_KEY_PATTERN.exec(String(presented ?? ''));
   if (!match) return null;
   const record = identity.apiKeys.get(match[1]);
-  if (!record || record.revokedAt || !tenantExists(record.tenantId)) return null;
+  if (!record || record.revokedAt || !tenantIsActive(record.tenantId)) return null;
   const expected = Buffer.from(record.hash, 'hex');
   const actual = Buffer.from(sha256(presented), 'hex');
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;

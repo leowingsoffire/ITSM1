@@ -8,7 +8,7 @@ import { AppError, ErrorCode, forbidden, rateLimited } from '../lib/errors.js';
 import { displayIp } from '../lib/format.js';
 import { logger } from '../lib/logger.js';
 import { runWithTenant, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
-import { tenantExists } from '../services/tenant.service.js';
+import { tenantExists, tenantIsActive } from '../services/tenant.service.js';
 import { roleFor } from './auth.js';
 
 const CORRELATION_HEADER = 'x-correlation-id';
@@ -69,6 +69,17 @@ export function tenantContext(request, response, next) {
         message: `Workspace "${tenantId}" was not found. It may not have finished onboarding yet.`,
         status: 404,
         meta: { tenantId }
+      })
+    );
+  }
+
+  if (!tenantIsActive(tenantId)) {
+    return next(
+      new AppError({
+        code: ErrorCode.FORBIDDEN,
+        status: 403,
+        message: 'This workspace has been archived. A platform administrator can restore it.',
+        meta: { tenantId, reason: 'WORKSPACE_ARCHIVED' }
       })
     );
   }

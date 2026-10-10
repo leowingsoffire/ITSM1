@@ -204,9 +204,11 @@ export function debounce(fn, waitMs = 280) {
 
 /** Visible at once; older toasts give way so a burst never buries the page. */
 const MAX_TOASTS = 3;
+let errorToastsMuted = false;
 
 /** Simple accessible toast. */
 export function toast(message, variant = 'info', timeoutMs = 4200) {
+  if (variant === 'error' && errorToastsMuted) return;
   const stack = document.getElementById('toast-stack');
   if (!stack) return;
   const node = el(`div.toast${variant === 'info' ? '' : `.toast--${variant}`}`, { text: message, role: 'status' });
@@ -214,6 +216,17 @@ export function toast(message, variant = 'info', timeoutMs = 4200) {
   const live = [...stack.children].filter((child) => !child.classList.contains('is-leaving'));
   for (const stale of live.slice(0, Math.max(0, live.length - MAX_TOASTS))) dismissToast(stale);
   setTimeout(() => dismissToast(node), timeoutMs);
+}
+
+/**
+ * For when a blocking interruption takes over (the session ended, the workspace
+ * was archived): the requests failing because of it are explained by that
+ * dialog, and the page reloads once it is resolved, so their error toasts
+ * would only add noise.
+ */
+export function muteErrorToasts() {
+  errorToastsMuted = true;
+  document.querySelectorAll('#toast-stack .toast--error').forEach(dismissToast);
 }
 
 function dismissToast(node) {

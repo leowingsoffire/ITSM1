@@ -81,8 +81,12 @@ intended: every workspace can upload documents that are billed per page.
    first sign-in. Use the account menu to switch between workspaces.
 4. Optional: Administration → API keys / Webhooks to connect ERP or RPA
    systems (webhook signature verification is documented in the README).
-5. Upload an invoice → watch Command Centre → Review Queue → approve.
-6. Prove it end to end from a workstation (read-only, safe on production):
+5. Administration → Workspaces (platform administrators): archive any
+   workspace that should no longer be used, such as trials or test runs.
+   Archiving is reversible and deletes nothing. Its members lose access and
+   its API keys stop working until it is restored.
+6. Upload an invoice → watch Command Centre → Review Queue → approve.
+7. Prove it end to end from a workstation (read-only, safe on production):
 
    ```powershell
    $env:E2E_BASE = "https://<app>.azurewebsites.net"

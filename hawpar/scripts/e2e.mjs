@@ -982,15 +982,21 @@ for (const viewport of VIEWPORTS) {
       const tabRect = active.getBoundingClientRect();
       return {
         label: active.textContent.trim(),
+        last: [...bar.querySelectorAll('.tab')].at(-1)?.textContent.trim(),
         visible: tabRect.left >= barRect.left - 1 && tabRect.right <= barRect.right + 1,
         overflowing: bar.scrollWidth > bar.clientWidth + 1,
         fadeStart: bar.classList.contains('has-more-start'),
         fadeEnd: bar.classList.contains('has-more-end')
       };
     });
+    // End selects the last tab: Learning memory, or Workspaces for a platform administrator.
     ok(
       `${viewport.name}: the selected tab is scrolled into view and hidden tabs are signposted`,
-      strip.label === 'Learning memory' && strip.visible && strip.fadeEnd === false && strip.fadeStart === strip.overflowing,
+      ['Learning memory', 'Workspaces'].includes(strip.label) &&
+        strip.label === strip.last &&
+        strip.visible &&
+        strip.fadeEnd === false &&
+        strip.fadeStart === strip.overflowing,
       JSON.stringify(strip)
     );
 

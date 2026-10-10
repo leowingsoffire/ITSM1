@@ -4,7 +4,8 @@
  * Identity comes from the HttpOnly session cookie. A 401 outside the auth
  * routes means the session ended (expired, revoked or signed out elsewhere)
  * and is announced with a `vgc:session-expired` window event; a 403 asking for
- * a password change raises `vgc:password-change-required`.
+ * a password change raises `vgc:password-change-required`, and a 403 because
+ * the tab's workspace was archived raises `vgc:workspace-archived`.
  */
 import { getTenantId } from './tenant.js';
 
@@ -80,6 +81,8 @@ async function request(path, options = {}) {
       window.dispatchEvent(new CustomEvent('vgc:session-expired'));
     } else if (response.status === 403 && detail.reason === 'PASSWORD_CHANGE_REQUIRED') {
       window.dispatchEvent(new CustomEvent('vgc:password-change-required'));
+    } else if (response.status === 403 && detail.reason === 'WORKSPACE_ARCHIVED') {
+      window.dispatchEvent(new CustomEvent('vgc:workspace-archived'));
     }
     throw error;
   }
@@ -262,5 +265,10 @@ export const api = {
 
   activity: (params) => request(`/api/admin/activity${query(params)}`),
   learningMemory: (recent) => request(`/api/learning/memory${query({ recent })}`),
-  clearLearningMemory: () => request('/api/learning/memory', { method: 'DELETE' })
+  clearLearningMemory: () => request('/api/learning/memory', { method: 'DELETE' }),
+
+  // ── Workspace lifecycle (platform administrators) ──────────────────────
+  listWorkspaces: () => request('/api/admin/workspaces'),
+  archiveWorkspace: (id) => request(`/api/admin/workspaces/${encodeURIComponent(id)}/archive`, { method: 'POST' }),
+  restoreWorkspace: (id) => request(`/api/admin/workspaces/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 };

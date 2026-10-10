@@ -2,15 +2,16 @@
  * Tenant registry — the "workspace" a customer gets after completing the
  * onboarding wizard.
  *
- * This is intentionally lightweight, consistent with the rest of the
- * platform's demo-grade identity model (see `public/js/login.js`): there is
- * still no real user/password/session backend. What onboarding adds is
- * *workspace isolation* — each tenant gets its own settings document, its own
- * document/document-store namespace and its own upload directory, so one
- * customer's company profile, branding and processed documents can never leak
- * into another's. The client persists the returned tenant id (localStorage)
- * and sends it on every request as `x-tenant-id`; the server is the source of
- * truth for what that id is allowed to see.
+ * Each tenant gets its own settings document, its own document-store
+ * namespace and its own upload directory, so one customer's company profile,
+ * branding and processed documents can never leak into another's. Who may
+ * open a workspace is decided by `identity.service.js` (memberships and
+ * platform administrators); a browser tab names the workspace it works in with
+ * `x-tenant-id`, and `tenantContext` verifies the caller's role there.
+ *
+ * A workspace is either active or archived. Archiving is the reversible way to
+ * retire one: nobody can open it and its API keys stop working, while its
+ * documents, settings and activity stay on disk until it is restored.
  *
  * Single JSON file persistence, mirroring `settings.service.js` — this is a
  * registry of workspaces, not a workspace's data itself.
@@ -19,7 +20,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { atomicWriteFile } from '../lib/atomicWrite.js';
 import { logger } from '../lib/logger.js';
 import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
@@ -27,6 +28,8 @@ import { DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 const REGISTRY_FILE = 'tenants.json';
 const MAX_NAME_LENGTH = 160;
 const MAX_SLUG_LENGTH = 48;
+
+export const TenantStatus = Object.freeze({ ACTIVE: 'active', ARCHIVED: 'archived' });
 
 /** Curated so the wizard's dropdown is meaningful without needing a taxonomy service. */
 export const BUSINESS_TYPES = Object.freeze([
@@ -190,6 +193,48 @@ export function getTenant(tenantId) {
 /** @returns {boolean} whether `tenantId` is a known, provisioned workspace (or the default one). */
 export function tenantExists(tenantId) {
   return !tenantId || tenantId === DEFAULT_TENANT_ID || tenants.has(tenantId);
+}
+
+/** @returns {boolean} whether the workspace exists and is open for work (not archived). */
+export function tenantIsActive(tenantId) {
+  if (!tenantId || tenantId === DEFAULT_TENANT_ID) return true;
+  const tenant = tenants.get(tenantId);
+  return Boolean(tenant) && tenant.status !== TenantStatus.ARCHIVED;
+}
+
+/**
+ * Archives or restores a workspace. Only the registry entry changes: the
+ * workspace's documents, settings, uploads and activity log are untouched.
+ * @param {string} tenantId
+ * @param {'active'|'archived'} status
+ * @param {{by?: string}} [options] who made the change
+ * @returns {Promise<object>} the updated tenant record
+ */
+export async function setTenantStatus(tenantId, status, { by } = {}) {
+  if (!tenantId || tenantId === DEFAULT_TENANT_ID) throw badRequest('The shared workspace cannot be archived.');
+  if (status !== TenantStatus.ACTIVE && status !== TenantStatus.ARCHIVED) {
+    throw badRequest(`"status" must be "${TenantStatus.ACTIVE}" or "${TenantStatus.ARCHIVED}".`);
+  }
+  const tenant = getTenant(tenantId);
+  const archived = tenant.status === TenantStatus.ARCHIVED;
+  if (archived === (status === TenantStatus.ARCHIVED)) {
+    throw conflict(`${tenant.companyName || tenantId} is already ${archived ? 'archived' : 'active'}.`, { tenantId });
+  }
+
+  const now = new Date().toISOString();
+  tenant.status = status;
+  tenant.updatedAt = now;
+  if (status === TenantStatus.ARCHIVED) {
+    tenant.archivedAt = now;
+    tenant.archivedBy = by ?? null;
+  } else {
+    delete tenant.archivedAt;
+    delete tenant.archivedBy;
+  }
+  await persist();
+
+  logger.info(status === TenantStatus.ARCHIVED ? 'Tenant workspace archived.' : 'Tenant workspace restored.', { tenantId, by });
+  return tenant;
 }
 
 export function listTenants() {
