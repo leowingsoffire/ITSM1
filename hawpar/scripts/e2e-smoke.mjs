@@ -11,6 +11,41 @@ const ok = (name, pass, detail = '') => {
 };
 
 const browser = await chromium.launch({ executablePath: CHROMIUM_EXE, headless: true });
+
+/**
+ * Opens a hash route and waits for it to settle: the previous view gone, no
+ * skeleton or spinner left, or the route's own failure state. A fixed sleep is
+ * not enough against a server that has just restarted.
+ */
+async function openRoute(page, hash, minLength = 40) {
+  await page.evaluate((target) => {
+    document.querySelector('#view-root')?.firstElementChild?.setAttribute('data-smoke-stale', '');
+    location.hash = target;
+  }, hash);
+  const settled = await page
+    .waitForFunction(
+      (min) => {
+        const root = document.querySelector('#view-root');
+        if (!root || root.querySelector('[data-smoke-stale]')) return false;
+        if (root.querySelector(':scope > .empty')) return true;
+        const view = root.querySelector(':scope > div.view');
+        return Boolean(view) && !view.querySelector('.skeleton, .spinner') && view.textContent.trim().length > min;
+      },
+      minLength,
+      { timeout: 20000 }
+    )
+    .then(() => true, () => false);
+  return page.$eval(
+    '#view-root',
+    (root, done) => ({
+      settled: done,
+      failure: root.querySelector(':scope > .empty h3')?.textContent.trim() ?? '',
+      length: root.textContent.trim().length
+    }),
+    settled
+  );
+}
+
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -49,15 +84,12 @@ try {
   const gateGone = (await page.$('.auth')) === null;
   ok('session persists on reload', gateGone);
 
-  // 6. Walk the main routes
+  // 6. Walk the main routes: each settles into real content, never the
+  //    "This view could not be loaded" failure state.
   const routes = ['documents', 'claims', 'review', 'search', 'cost', 'blueprint', 'ingest'];
   for (const r of routes) {
-    await page.evaluate((h) => { location.hash = h; }, `#/${r}`);
-    await page.waitForFunction(() => document.querySelector('div.view'), null, { timeout: 10000 });
-    await page.waitForTimeout(700); // let async data paint
-    const hasError = await page.$eval('body', (b) => b.textContent.includes('Something went wrong'));
-    const text = await page.$eval('div.view', (v) => v.textContent.trim().length);
-    ok(`route #/${r} renders`, !hasError && text > 40, `${text} chars`);
+    const view = await openRoute(page, `#/${r}`);
+    ok(`route #/${r} renders`, view.settled && !/could not be loaded/i.test(view.failure), view.failure || `${view.length} chars`);
   }
 
   // 7. The documents table lists the workspace's documents; open one. An empty
@@ -70,16 +102,14 @@ try {
     await page.waitForFunction(async () => (await (await fetch('/api/documents?pageSize=1')).json()).total > 0, null, { timeout: 60000, polling: 1000 });
     listing = await page.evaluate(async () => (await fetch('/api/documents?pageSize=1')).json());
   }
-  await page.evaluate(() => { location.hash = '#/documents'; });
+  await openRoute(page, '#/documents');
   await page.waitForFunction(() => document.querySelectorAll('table tbody tr').length > 0, null, { timeout: 15000 });
   const rows = await page.$$eval('table tbody tr', (n) => n.length);
   ok('documents table populated', rows >= Math.min(listing.total, 10), `${rows} rows of ${listing.total}`);
 
   const docId = listing.items[0].id;
-  await page.evaluate((id) => { location.hash = `#/documents/${id}`; }, docId);
-  await page.waitForTimeout(1200);
-  const detailLen = await page.$eval('div.view', (v) => v.textContent.trim().length);
-  ok('document detail renders', detailLen > 100, `${detailLen} chars`);
+  const detail = await openRoute(page, `#/documents/${docId}`, 100);
+  ok('document detail renders', detail.settled && !detail.failure, detail.failure || `${detail.length} chars`);
 
   // 8. No uncaught page errors during the whole run
   ok('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));
