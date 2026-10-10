@@ -79,4 +79,18 @@ describe('API rate limiting', () => {
     const response = await fetch(`${baseUrl}/health`);
     assert.equal(response.status, 429);
   });
+
+  test('should_count_a_client_once_whatever_source_port_the_proxy_reports', async () => {
+    // Azure App Service forwards `X-Forwarded-For: <ip>:<port>`. Keyed on the
+    // raw value, every new connection would get a fresh budget.
+    const from = (address) => ({ headers: { 'x-forwarded-for': address } });
+    for (let port = 40000; port < 40000 + BUDGET; port += 1) {
+      const response = await fetch(`${baseUrl}/documents?pageSize=1`, from(`203.0.113.50:${port}`));
+      assert.equal(response.status, 200, `request from port ${port} is inside the budget`);
+    }
+    const overflow = await fetch(`${baseUrl}/documents?pageSize=1`, from('203.0.113.50:49999'));
+    assert.equal(overflow.status, 429, 'a new source port must not reset the budget');
+    const otherClient = await fetch(`${baseUrl}/documents?pageSize=1`, from('203.0.113.51:40000'));
+    assert.equal(otherClient.status, 200, 'other clients keep their own budget');
+  });
 });

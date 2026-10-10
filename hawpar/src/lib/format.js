@@ -129,13 +129,21 @@ export function titleCase(value) {
 }
 
 /**
- * The address as people read it: a dual-stack socket reports IPv4 clients as
- * IPv4-mapped IPv6 (`::ffff:203.0.113.7`), which is shown as `203.0.113.7`.
+ * The address as people read it, and the key a client is rate limited by:
+ * - a dual-stack socket reports IPv4 clients as IPv4-mapped IPv6
+ *   (`::ffff:203.0.113.7`), shown as `203.0.113.7`;
+ * - Azure App Service forwards `X-Forwarded-For: 203.0.113.7:51234` and
+ *   `[2001:db8::1]:51234`, so the source port is dropped — otherwise every new
+ *   connection would look like a different client.
  * Returns null when there is no address, and caps the length for storage.
  */
 export function displayIp(value) {
   if (value === undefined || value === null || value === '') return null;
-  const text = String(value).trim();
+  let text = String(value).trim();
+  const ipv4WithPort = /^(\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}$/.exec(text);
+  if (ipv4WithPort) text = ipv4WithPort[1];
+  const bracketed = /^\[([0-9a-f:.]+)\](?::\d{1,5})?$/i.exec(text);
+  if (bracketed) text = bracketed[1];
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(text);
   return (mapped ? mapped[1] : text).slice(0, 64);
 }

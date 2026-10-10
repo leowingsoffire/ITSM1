@@ -28,6 +28,15 @@ describe('format helpers', () => {
     assert.equal(displayIp('a'.repeat(100)).length, 64);
   });
 
+  test('should_drop_the_source_port_that_app_service_forwards', () => {
+    assert.equal(displayIp('203.0.113.7:51234'), '203.0.113.7');
+    assert.equal(displayIp('[2001:db8::1]:51234'), '2001:db8::1');
+    assert.equal(displayIp('[2001:db8::1]'), '2001:db8::1');
+    assert.equal(displayIp('[::ffff:203.0.113.7]:443'), '203.0.113.7');
+    assert.equal(displayIp(' 198.51.100.4:8080 '), '198.51.100.4');
+    assert.equal(displayIp('2001:db8::1:51234'), '2001:db8::1:51234', 'an unbracketed IPv6 address has no separable port');
+  });
+
   test('should_parse_amounts_with_thousand_separators_and_currency_prefixes', () => {
     assert.equal(parseAmount('SGD 1,234.56'), 1234.56);
     assert.equal(parseAmount('US$ 89.10'), 89.1);

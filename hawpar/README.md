@@ -214,7 +214,7 @@ Azure spend**. Go to **Ingest Documents → Run selected samples** to populate t
 own PDFs onto the drop zone.
 
 ```powershell
-npm test     # 241 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
+npm test     # 243 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
 npm run e2e  # browser checks: full journeys, validation, a11y and desktop/tablet/mobile layouts
 ```
 

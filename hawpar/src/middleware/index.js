@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config/index.js';
 import { AppError, ErrorCode, forbidden, rateLimited } from '../lib/errors.js';
+import { displayIp } from '../lib/format.js';
 import { logger } from '../lib/logger.js';
 import { runWithTenant, DEFAULT_TENANT_ID } from '../lib/tenantContext.js';
 import { tenantExists } from '../services/tenant.service.js';
@@ -157,7 +158,7 @@ export function rateLimit(scope = 'api') {
   const limits = config.security.rateLimit;
   const maximum = scope === 'upload' ? limits.uploadPerMinute : scope === 'auth' ? limits.authPerMinute : limits.apiPerMinute;
   return (request, response, next) => {
-    const identity = `${scope}:${request.ip ?? 'unknown'}`;
+    const identity = `${scope}:${displayIp(request.ip) ?? 'unknown'}`;
     const now = Date.now();
     sweepRateBuckets(now);
     const bucket = rateBuckets.get(identity);
