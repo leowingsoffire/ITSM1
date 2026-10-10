@@ -214,7 +214,7 @@ Azure spend**. Go to **Ingest Documents → Run selected samples** to populate t
 own PDFs onto the drop zone.
 
 ```powershell
-npm test     # 251 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
+npm test     # 252 unit + API integration tests (node:test), run serially in a throwaway DATA_DIR
 npm run e2e  # browser checks: full journeys, validation, a11y and desktop/tablet/mobile layouts
 ```
 
@@ -440,7 +440,9 @@ Every request is attributable to a real person or a named integration — there 
 - **Accounts and workspaces.** A person has one account and can belong to several workspaces (tenants),
   each with its own documents, settings, members, keys, webhooks and activity log. Data never crosses
   workspaces: a session for workspace A that asks for workspace B is refused unless the person is also a
-  member of B. The workspace is chosen per browser tab, so two tabs can work in two workspaces.
+  member of B. The workspace is chosen per browser tab, so two tabs can work in two workspaces. Signing
+  in opens the workspace you last used. If that one is gone, it opens one of your own workspaces, and a
+  platform administrator who belongs to none starts in the shared workspace.
 - **Roles.** `Administrator` manages the workspace (members, API keys, webhooks, settings, destructive
   actions); `Operator` uploads, reviews, corrects and approves. A **platform administrator** — seeded from
   `ADMIN_EMAIL`/`ADMIN_PASSWORD` — can open and administer every workspace without being listed in it.

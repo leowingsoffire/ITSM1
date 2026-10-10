@@ -179,7 +179,12 @@ export function workspacesFor(user) {
 function pickWorkspace(user, preferred) {
   if (preferred && roleIn(user, preferred)) return preferred;
   if (user.lastTenantId && roleIn(user, user.lastTenantId)) return user.lastTenantId;
-  return workspacesFor(user).find((workspace) => workspace.role)?.id ?? null;
+  // Someone's own workspaces come first. Platform administrators who belong
+  // to none start in the shared workspace, never in an arbitrary client's.
+  const memberOf = new Set((user.memberships ?? []).map((entry) => entry.tenantId));
+  const own = workspacesFor(user).find((workspace) => workspace.role && memberOf.has(workspace.id));
+  if (own) return own.id;
+  return roleIn(user, DEFAULT_TENANT_ID) ? DEFAULT_TENANT_ID : null;
 }
 
 export function publicUser(user) {

@@ -214,4 +214,20 @@ describe('workspace lifecycle', () => {
       await setTenantStatus(state.retiringId, 'active', { by: PLATFORM_ADMIN.email });
     }
   });
+
+  test('should_start_a_platform_administrator_without_memberships_in_the_shared_workspace', async () => {
+    const switched = await call('POST', '/auth/workspace', { cookie: state.adminCookie, body: { tenantId: state.keeperId } });
+    assert.equal(switched.status, 200, JSON.stringify(switched.json));
+    // With their last workspace gone, they fall back to the shared workspace,
+    // not whichever client workspace happens to sort first.
+    await setTenantStatus(state.keeperId, 'archived', { by: PLATFORM_ADMIN.email });
+    try {
+      const login = await call('POST', '/auth/login', { body: { email: PLATFORM_ADMIN.email, password: PLATFORM_ADMIN.password } });
+      assert.equal(login.status, 200, JSON.stringify(login.json));
+      assert.equal(login.json.workspace.id, 'default');
+      assert.ok(login.json.workspaces.some((workspace) => workspace.id === state.retiringId), 'client workspaces stay one switch away');
+    } finally {
+      await setTenantStatus(state.keeperId, 'active', { by: PLATFORM_ADMIN.email });
+    }
+  });
 });
